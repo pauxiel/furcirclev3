@@ -100,3 +100,86 @@
 
 ## Phase 1 Done Definition
 All tasks above checked. E2E smoke test passes. Zero Lambda errors in CloudWatch during test run.
+
+---
+
+# FurCircle Phase 2 — Task List
+
+## Pre-Build (resolve before P2-T1)
+- [ ] **DECIDE** Training videos: `videoUrl=null` for Phase 2, real URLs in Phase 3?
+- [ ] **DECIDE** Wellness score on monthly refresh: reset to AI baseline?
+- [ ] **VERIFY** Phase 1 Task 6 complete: `savePlan` writes `GSI1PK=PLAN#${yyyy-mm}` on plan records
+- [ ] **DECIDE** Journey progress circles: use `ageMonthsAtPlan` (no separate tracking)?
+
+---
+
+## Task P2-T1 — Activity Log + Wellness Score
+- [ ] Write `src/lib/wellness.ts` — `assignCategory()`, `recalcScore()`, `computeWellnessScore()`
+- [ ] Write `src/functions/wellness/logActivity.ts`
+  - [ ] Ownership check (403)
+  - [ ] Task verification against current plan (400 TASK_NOT_FOUND)
+  - [ ] Write ACTIVITY record to DynamoDB
+  - [ ] Update `dog.categoryScores` + `dog.wellnessScore` via UpdateItem
+- [ ] Write `src/functions/wellness/getActivities.ts`
+  - [ ] Ownership check
+  - [ ] Query ACTIVITY# items for month
+  - [ ] Compute completedCount / totalTasks
+- [ ] Add `POST /dogs/{dogId}/activities` route + IAM to `serverless.yml`
+- [ ] Add `GET /dogs/{dogId}/activities` route + IAM to `serverless.yml`
+- [ ] Write unit tests for `src/lib/wellness.ts` (category matching, score boundaries)
+- [ ] Deploy + verify: log a task → check score updated in DynamoDB
+- [ ] Verify score never exceeds 100 or goes below 0
+
+---
+
+## Task P2-T2 — Monthly Journey Detail
+- [ ] Write `src/functions/wellness/getMonthlyJourney.ts`
+  - [ ] Ownership check
+  - [ ] `?month` param support (default current month)
+  - [ ] GetItem plan → enrich whatToDo with `completed` flag from activities
+  - [ ] Derive `monthLabel`
+- [ ] Add `GET /dogs/{dogId}/journey` route + IAM to `serverless.yml`
+- [ ] Deploy + verify: completed tasks show `completed: true`
+
+---
+
+## Task P2-T3 — Home Screen API
+- [ ] Write `src/functions/wellness/getHomeScreen.ts`
+  - [ ] Parallel BatchGetItem: owner PROFILE + SUBSCRIPTION
+  - [ ] Query dogs via GSI1
+  - [ ] Parallel: GetItem plan + Query activities
+  - [ ] Build actionSteps with completion status
+  - [ ] Build pillSummaries
+  - [ ] Build ctaBanners (upgrade banner for welcome/protector plans)
+  - [ ] Handle: no dog, plan generating, no plan cases
+- [ ] Add `GET /home` route + IAM to `serverless.yml`
+- [ ] Deploy + verify: full home screen response in < 500ms
+
+---
+
+## Task P2-T4 — Monthly Auto-Refresh
+- [ ] Verify `savePlan` writes GSI1PK=PLAN#${yyyy-mm} (prerequisite)
+- [ ] Write `src/functions/plan/triggerMonthlyRefresh.ts`
+  - [ ] Query GSI1 with pagination for all plans from prevMonth
+  - [ ] Fan out Step Functions in batches of 25 with `Promise.allSettled`
+  - [ ] Log counts to CloudWatch
+- [ ] Add EventBridge `schedule: cron(0 0 1 * ? *)` to `serverless.yml`
+- [ ] Add IAM: `dynamodb:Query` on GSI1 + `states:StartExecution`
+- [ ] Deploy + manually invoke → verify Step Functions start per dog
+- [ ] Verify CloudWatch logs show dog count + success/failure
+
+---
+
+## Checkpoint — Phase 2 E2E Smoke Test
+- [ ] Run full 10-step flow (see plan-phase2 checkpoint)
+- [ ] `GET /home` response time < 500ms (measure with curl)
+- [ ] Wellness score changes correctly across logged activities
+- [ ] EventBridge rule visible and enabled in AWS console
+- [ ] `npm run test:integration` — all Phase 1 + Phase 2 tests pass
+- [ ] Zero Lambda errors in CloudWatch
+- [ ] Sign off Phase 2 ✅ → begin Phase 3 planning
+
+---
+
+## Phase 2 Done Definition
+All tasks above checked. E2E smoke test passes. Home screen < 500ms. Zero Lambda errors.
