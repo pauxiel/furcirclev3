@@ -1,0 +1,445 @@
+org: pauxiel
+service: furbeta
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-1
+  memorySize: 256
+  timeout: 29
+  stage: ${opt:stage, 'dev'}
+  environment:
+    TABLE_NAME: !Ref FurcircleTable
+    BUCKET_NAME: !Ref DogPhotosBucket
+    SNS_TOPIC_ARN: !Ref NotificationsTopic
+    STATE_MACHINE_ARN: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:furcircle-generate-plan-${self:provider.stage}
+    ANTHROPIC_API_KEY_SSM: /furcircle/${self:provider.stage}/anthropic/apiKey
+    # USER_POOL_ID and USER_POOL_CLIENT_ID intentionally omitted from global env
+    # to avoid circular dep: CognitoUserPool.LambdaConfig -> postConfirmation -> CognitoUserPool
+    # postConfirmation reads pool ID from event.userPoolId at runtime
+  httpApi:
+    authorizers:
+      cognitoAuthorizer:
+        type: jwt
+        identitySource: $request.header.Authorization
+        issuerUrl: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}
+        audience:
+          - !Ref CognitoUserPoolClient
+
+functions:
+  # No events — triggered by Cognito LambdaConfig in resources section
+  postConfirmation:
+    handler: src/functions/auth/postConfirmation.handler
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - cognito-idp:AdminAddUserToGroup
+        Resource: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
+
+  getMe:
+    handler: src/functions/owners/getMe.handler
+    events:
+      - httpApi:
+          path: /owners/me
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:BatchGetItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  updateMe:
+    handler: src/functions/owners/updateMe.handler
+    events:
+      - httpApi:
+          path: /owners/me
+          method: PUT
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  createDog:
+    handler: src/functions/dogs/createDog.handler
+    events:
+      - httpApi:
+          path: /dogs
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+          - dynamodb:BatchWriteItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - states:StartExecution
+        # Use Sub with name to avoid circular dep with GeneratePlanStateMachine resource
+        Resource: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:furcircle-generate-plan-${self:provider.stage}
+
+  listDogs:
+    handler: src/functions/dogs/listDogs.handler
+    events:
+      - httpApi:
+          path: /dogs
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub ${FurcircleTable.Arn}/index/GSI1
+
+  getDog:
+    handler: src/functions/dogs/getDog.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub ${FurcircleTable.Arn}/index/GSI1
+
+  updateDog:
+    handler: src/functions/dogs/updateDog.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}
+          method: PUT
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  getDogPhotoUrl:
+    handler: src/functions/dogs/getDogPhotoUrl.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}/photo
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+        Resource: !Sub ${DogPhotosBucket.Arn}/*
+
+  getCurrentPlan:
+    handler: src/functions/dogs/getCurrentPlan.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}/plan
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+        Resource: !GetAtt FurcircleTable.Arn
+
+  validateInput:
+    handler: src/functions/plan/validateInput.handler
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  callClaude:
+    handler: src/functions/plan/callClaude.handler
+    timeout: 60
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - ssm:GetParameter
+        Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/anthropic/apiKey
+
+  savePlan:
+    handler: src/functions/plan/savePlan.handler
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  notifyPlanReady:
+    handler: src/functions/plan/notifyPlanReady.handler
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - sns:Publish
+        Resource: !Ref NotificationsTopic
+
+  handlePlanError:
+    handler: src/functions/plan/handlePlanError.handler
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - sns:Publish
+        Resource: !Ref NotificationsTopic
+
+build:
+  esbuild:
+    bundle: true
+    minify: false
+    sourcemap: true
+    target: node20
+
+plugins: []
+
+resources:
+  Resources:
+    CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: furcircle-users-${self:provider.stage}
+        UsernameAttributes:
+          - email
+        AutoVerifiedAttributes:
+          - email
+        Schema:
+          - Name: email
+            Required: true
+            Mutable: false
+          - Name: given_name
+            Required: true
+            Mutable: true
+          - Name: family_name
+            Required: true
+            Mutable: true
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+            RequireUppercase: true
+            RequireLowercase: true
+            RequireNumbers: true
+            RequireSymbols: false
+        MfaConfiguration: 'OFF'
+        LambdaConfig:
+          PostConfirmation: !GetAtt PostConfirmationLambdaFunction.Arn
+
+    CognitoUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: furcircle-app
+        UserPoolId: !Ref CognitoUserPool
+        GenerateSecret: false
+        ExplicitAuthFlows:
+          - ALLOW_USER_SRP_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+
+    CognitoGroupOwners:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: owners
+        UserPoolId: !Ref CognitoUserPool
+
+    CognitoGroupVets:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: vets
+        UserPoolId: !Ref CognitoUserPool
+
+    # Grants Cognito permission to invoke the postConfirmation Lambda
+    PostConfirmationInvokePermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName: !GetAtt PostConfirmationLambdaFunction.Arn
+        Principal: cognito-idp.amazonaws.com
+        SourceArn: !GetAtt CognitoUserPool.Arn
+
+    FurcircleTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: furcircle-${self:provider.stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+          - AttributeName: GSI1PK
+            AttributeType: S
+          - AttributeName: GSI1SK
+            AttributeType: S
+          - AttributeName: GSI2PK
+            AttributeType: S
+          - AttributeName: GSI2SK
+            AttributeType: S
+          - AttributeName: GSI3PK
+            AttributeType: S
+          - AttributeName: GSI3SK
+            AttributeType: S
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH
+          - AttributeName: SK
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: GSI1
+            KeySchema:
+              - AttributeName: GSI1PK
+                KeyType: HASH
+              - AttributeName: GSI1SK
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+          - IndexName: GSI2
+            KeySchema:
+              - AttributeName: GSI2PK
+                KeyType: HASH
+              - AttributeName: GSI2SK
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+          - IndexName: GSI3
+            KeySchema:
+              - AttributeName: GSI3PK
+                KeyType: HASH
+              - AttributeName: GSI3SK
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+
+    DogPhotosBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: furcircle-dog-photos-${self:provider.stage}
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+        # No CORS needed — mobile native app uploads directly via presigned URL (not a browser)
+
+    NotificationsTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: furcircle-notifications-${self:provider.stage}
+
+    # Step Functions role uses wildcard Lambda ARN to avoid circular deps
+    StepFunctionsRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: states.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: InvokeLambda
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: lambda:InvokeFunction
+                  Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:furbeta-${self:provider.stage}-*
+
+    GeneratePlanStateMachine:
+      Type: AWS::StepFunctions::StateMachine
+      Properties:
+        StateMachineName: furcircle-generate-plan-${self:provider.stage}
+        RoleArn: !GetAtt StepFunctionsRole.Arn
+        DefinitionString: !Sub |
+          {
+            "Comment": "FurCircle AI plan generation",
+            "StartAt": "ValidateInput",
+            "States": {
+              "ValidateInput": {
+                "Type": "Task",
+                "Resource": "${ValidateInputLambdaFunction.Arn}",
+                "Next": "CallClaude",
+                "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "HandleError" }]
+              },
+              "CallClaude": {
+                "Type": "Task",
+                "Resource": "${CallClaudeLambdaFunction.Arn}",
+                "Retry": [{ "ErrorEquals": ["States.ALL"], "MaxAttempts": 2, "IntervalSeconds": 5 }],
+                "Next": "SavePlan",
+                "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "HandleError" }]
+              },
+              "SavePlan": {
+                "Type": "Task",
+                "Resource": "${SavePlanLambdaFunction.Arn}",
+                "Next": "NotifyUser",
+                "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "HandleError" }]
+              },
+              "NotifyUser": {
+                "Type": "Task",
+                "Resource": "${NotifyPlanReadyLambdaFunction.Arn}",
+                "End": true
+              },
+              "HandleError": {
+                "Type": "Task",
+                "Resource": "${HandlePlanErrorLambdaFunction.Arn}",
+                "End": true
+              }
+            }
+          }
+
+  Outputs:
+    UserPoolId:
+      Value: !Ref CognitoUserPool
+      Export:
+        Name: ${self:service}-${self:provider.stage}-UserPoolId
+    UserPoolClientId:
+      Value: !Ref CognitoUserPoolClient
+      Export:
+        Name: ${self:service}-${self:provider.stage}-UserPoolClientId
+    TableName:
+      Value: !Ref FurcircleTable
+      Export:
+        Name: ${self:service}-${self:provider.stage}-TableName
+    BucketName:
+      Value: !Ref DogPhotosBucket
+      Export:
+        Name: ${self:service}-${self:provider.stage}-BucketName
+    SnsTopicArn:
+      Value: !Ref NotificationsTopic
+      Export:
+        Name: ${self:service}-${self:provider.stage}-SnsTopicArn
