@@ -1,9 +1,12 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { PutCommand } from '@aws-sdk/lib-dynamodb';
+import { SFNClient, StartExecutionCommand } from '@aws-sdk/client-sfn';
 import { v4 as uuidv4 } from 'uuid';
 import { docClient } from '../../lib/dynamodb';
 import { success, error } from '../../lib/response';
 import { getUserId } from '../../lib/auth';
+
+const sfn = new SFNClient({ region: process.env['AWS_REGION'] ?? 'us-east-1' });
 
 const SPAYED_NEUTERED_VALUES = ['yes', 'no', 'not_yet'] as const;
 type SpayedNeutered = (typeof SPAYED_NEUTERED_VALUES)[number];
@@ -112,6 +115,32 @@ export const handler = async (
   }
 
   await Promise.all(puts);
+
+  // Trigger Step Function async — fire and forget (do not await so client gets 201 immediately)
+  const stateMachineArn = process.env['PLAN_STATE_MACHINE_ARN'];
+  if (stateMachineArn) {
+    sfn
+      .send(
+        new StartExecutionCommand({
+          stateMachineArn,
+          name: `plan-${dogId}`,
+          input: JSON.stringify({
+            dogId,
+            ownerId,
+            name,
+            breed,
+            ageMonths,
+            spayedNeutered,
+            medicalConditions: medicalConditions ?? null,
+            environment: environment ?? null,
+          }),
+        }),
+      )
+      .catch(() => {
+        // SFN failure is non-blocking — dog is created, planStatus stays 'generating'
+        // Error will surface in CloudWatch / Step Functions console
+      });
+  }
 
   return success(
     {
