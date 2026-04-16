@@ -288,6 +288,25 @@ functions:
           - sns:Publish
         Resource: !Ref NotificationsTopic
 
+  triggerMonthlyRefresh:
+    handler: src/functions/plan/triggerMonthlyRefresh.handler
+    timeout: 300
+    events:
+      - schedule:
+          rate: cron(0 0 1 * ? *)
+          enabled: true
+    environment:
+      STATE_MACHINE_ARN: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:furcircle-generate-plan-${self:provider.stage}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: !Sub ${FurcircleTable.Arn}/index/GSI1
+      - Effect: Allow
+        Action:
+          - states:StartExecution
+        Resource: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:furcircle-generate-plan-${self:provider.stage}
+
 build:
   esbuild:
     bundle: true
