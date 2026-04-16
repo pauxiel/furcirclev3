@@ -220,6 +220,24 @@ functions:
           - !GetAtt FurcircleTable.Arn
           - !Sub ${FurcircleTable.Arn}/index/GSI1
 
+  getHomeScreen:
+    handler: src/functions/wellness/getHomeScreen.handler
+    events:
+      - httpApi:
+          path: /home
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:BatchGetItem
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub ${FurcircleTable.Arn}/index/GSI1
+
   validateInput:
     handler: src/functions/plan/validateInput.handler
     iamRoleStatements:
