@@ -170,6 +170,39 @@ functions:
           - dynamodb:Query
         Resource: !GetAtt FurcircleTable.Arn
 
+  logActivity:
+    handler: src/functions/wellness/logActivity.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}/activities
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  getActivities:
+    handler: src/functions/wellness/getActivities.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}/activities
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub ${FurcircleTable.Arn}/index/GSI1
+
   validateInput:
     handler: src/functions/plan/validateInput.handler
     iamRoleStatements:
@@ -268,6 +301,7 @@ resources:
         GenerateSecret: false
         ExplicitAuthFlows:
           - ALLOW_USER_SRP_AUTH
+          - ALLOW_USER_PASSWORD_AUTH
           - ALLOW_REFRESH_TOKEN_AUTH
 
     CognitoGroupOwners:
