@@ -170,6 +170,74 @@ functions:
           - dynamodb:Query
         Resource: !GetAtt FurcircleTable.Arn
 
+  logActivity:
+    handler: src/functions/wellness/logActivity.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}/activities
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  getActivities:
+    handler: src/functions/wellness/getActivities.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}/activities
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub ${FurcircleTable.Arn}/index/GSI1
+
+  getMonthlyJourney:
+    handler: src/functions/wellness/getMonthlyJourney.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}/journey
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub ${FurcircleTable.Arn}/index/GSI1
+
+  getHomeScreen:
+    handler: src/functions/wellness/getHomeScreen.handler
+    events:
+      - httpApi:
+          path: /home
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:BatchGetItem
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub ${FurcircleTable.Arn}/index/GSI1
+
   validateInput:
     handler: src/functions/plan/validateInput.handler
     iamRoleStatements:
@@ -220,6 +288,25 @@ functions:
           - sns:Publish
         Resource: !Ref NotificationsTopic
 
+  triggerMonthlyRefresh:
+    handler: src/functions/plan/triggerMonthlyRefresh.handler
+    timeout: 300
+    events:
+      - schedule:
+          rate: cron(0 0 1 * ? *)
+          enabled: true
+    environment:
+      STATE_MACHINE_ARN: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:furcircle-generate-plan-${self:provider.stage}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: !Sub ${FurcircleTable.Arn}/index/GSI1
+      - Effect: Allow
+        Action:
+          - states:StartExecution
+        Resource: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:furcircle-generate-plan-${self:provider.stage}
+
 build:
   esbuild:
     bundle: true
@@ -268,6 +355,7 @@ resources:
         GenerateSecret: false
         ExplicitAuthFlows:
           - ALLOW_USER_SRP_AUTH
+          - ALLOW_USER_PASSWORD_AUTH
           - ALLOW_REFRESH_TOKEN_AUTH
 
     CognitoGroupOwners:

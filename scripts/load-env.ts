@@ -1,37 +1,40 @@
 /**
- * Pulls Serverless stack outputs into .env.test for local integration testing.
+ * Pulls CloudFormation stack outputs into .env.test for local integration testing.
  * Usage: npx ts-node scripts/load-env.ts --stage dev
  */
-import { execSync } from 'child_process';
+import { CloudFormationClient, DescribeStacksCommand, type Output } from '@aws-sdk/client-cloudformation';
 import { writeFileSync } from 'fs';
 
 const stage = process.argv.includes('--stage')
   ? process.argv[process.argv.indexOf('--stage') + 1]
   : 'dev';
 
-console.log(`Loading stack outputs for stage: ${stage}`);
+const stackName = `furbeta-${stage}`;
+console.log(`Fetching outputs from CloudFormation stack: ${stackName}`);
 
-const output = execSync(`npx serverless info --stage ${stage} --verbose`, { encoding: 'utf8' });
+const cf = new CloudFormationClient({ region: 'us-east-1' });
 
-const parse = (key: string): string => {
-  const match = output.match(new RegExp(`${key}:\\s*(.+)`));
-  return match?.[1]?.trim() ?? '';
-};
+async function main(): Promise<void> {
+  const { Stacks } = await cf.send(new DescribeStacksCommand({ StackName: stackName }));
+  const outputs: Output[] = Stacks?.[0]?.Outputs ?? [];
 
-// Parse API endpoint URL from sls info output
-const apiUrl = output.match(/https:\/\/\S+\.execute-api\.\S+\.amazonaws\.com/)?.[0] ?? '';
+  const get = (key: string): string =>
+    outputs.find((o) => o.OutputKey === key)?.OutputValue ?? '';
 
-const env = [
-  `USER_POOL_ID=${parse('UserPoolId')}`,
-  `USER_POOL_CLIENT_ID=${parse('UserPoolClientId')}`,
-  `TABLE_NAME=${parse('TableName')}`,
-  `BUCKET_NAME=${parse('BucketName')}`,
-  `SNS_TOPIC_ARN=${parse('SnsTopicArn')}`,
-  `API_URL=${apiUrl}`,
-  `AWS_REGION=us-east-1`,
-  `STAGE=${stage}`,
-].join('\n');
+  const env = [
+    `USER_POOL_ID=${get('UserPoolId')}`,
+    `USER_POOL_CLIENT_ID=${get('UserPoolClientId')}`,
+    `TABLE_NAME=${get('TableName')}`,
+    `BUCKET_NAME=${get('BucketName')}`,
+    `SNS_TOPIC_ARN=${get('SnsTopicArn')}`,
+    `API_URL=${get('HttpApiUrl')}`,
+    `AWS_REGION=us-east-1`,
+    `STAGE=${stage}`,
+  ].join('\n');
 
-writeFileSync('.env.test', env);
-console.log('Written to .env.test');
-console.log(env);
+  writeFileSync('.env.test', env);
+  console.log('Written to .env.test');
+  console.log(env);
+}
+
+main().catch((err: unknown) => { console.error(err); process.exit(1); });
