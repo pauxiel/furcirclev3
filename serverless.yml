@@ -203,6 +203,23 @@ functions:
           - !GetAtt FurcircleTable.Arn
           - !Sub ${FurcircleTable.Arn}/index/GSI1
 
+  getMonthlyJourney:
+    handler: src/functions/wellness/getMonthlyJourney.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}/journey
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub ${FurcircleTable.Arn}/index/GSI1
+
   validateInput:
     handler: src/functions/plan/validateInput.handler
     iamRoleStatements:
