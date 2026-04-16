@@ -307,6 +307,30 @@ functions:
           - states:StartExecution
         Resource: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:furcircle-generate-plan-${self:provider.stage}
 
+  createThread:
+    handler: src/functions/threads/createThread.handler
+    events:
+      - httpApi:
+          path: /threads
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource:
+          - !Sub ${FurcircleTable.Arn}/index/GSI1
+      - Effect: Allow
+        Action:
+          - sns:Publish
+        Resource: !Ref NotificationsTopic
+
 build:
   esbuild:
     bundle: true
