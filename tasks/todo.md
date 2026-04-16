@@ -183,3 +183,98 @@ All tasks above checked. E2E smoke test passes. Zero Lambda errors in CloudWatch
 
 ## Phase 2 Done Definition
 All tasks above checked. E2E smoke test passes. Home screen < 500ms. Zero Lambda errors.
+
+---
+
+# FurCircle Phase 3 — Task List
+
+## Task P3-T1 — createThread
+- [ ] Write `src/lib/threads.ts` — types, encodeCursor/decodeCursor, chunkArray
+- [ ] Write `src/functions/threads/createThread.ts`
+  - [ ] Validate vetId, dogId, type, initialMessage (1–2000 chars)
+  - [ ] Parallel: GetItem dog + GetItem subscription + GetItem vet
+  - [ ] Subscription gate: welcome plan → Query GSI1 by month prefix, 403 if count ≥ 1
+  - [ ] Parallel: PutItem THREAD METADATA + PutItem first MSG
+  - [ ] try/catch SNS publish to vet (non-fatal)
+- [ ] Add `POST /threads` route + IAM to `serverless.yml`
+- [ ] Write unit tests (9 cases)
+- [ ] Deploy + smoke test
+
+---
+
+## Task P3-T2 — listThreads
+- [ ] Write `src/functions/threads/listThreads.ts`
+  - [ ] Query GSI1 by owner (ScanIndexForward=false)
+  - [ ] Type filter via GSI1SK prefix; status filter post-query
+  - [ ] Single BatchGetItem for all vet+dog profiles
+  - [ ] Promise.all per-thread: last message query + unread count
+  - [ ] base64 nextToken pagination
+- [ ] Add `GET /threads` route + IAM to `serverless.yml`
+- [ ] Write unit tests (10 cases)
+- [ ] Deploy + smoke test
+
+---
+
+## Task P3-T3 — getThread
+- [ ] Write `src/functions/threads/getThread.ts`
+  - [ ] GetItem METADATA → ownership check
+  - [ ] Promise.all: Query messages + GetItem vet + GetItem dog + GetItem owner
+  - [ ] Derive senderName per message
+  - [ ] base64 nextToken pagination
+- [ ] Add `GET /threads/{threadId}` route + IAM to `serverless.yml`
+- [ ] Write unit tests (9 cases)
+- [ ] Deploy + smoke test
+
+---
+
+## Task P3-T4 — sendMessage
+- [ ] Write `src/functions/threads/sendMessage.ts`
+  - [ ] GetItem METADATA → ownership + open status check
+  - [ ] Validate body (1–2000 chars)
+  - [ ] PutItem MSG record
+  - [ ] try/catch SNS publish to vet (non-fatal)
+- [ ] Add `POST /threads/{threadId}/messages` route + IAM to `serverless.yml`
+- [ ] Write unit tests (8 cases)
+- [ ] Deploy + smoke test
+
+---
+
+## Task P3-T5 — markThreadRead
+- [ ] Write `src/functions/threads/markThreadRead.ts`
+  - [ ] GetItem METADATA → ownership check
+  - [ ] Paginated query loop for all messages
+  - [ ] Filter unread vet messages; early return if 0
+  - [ ] Chunk into 25s, Promise.all UpdateItem readAt=now
+- [ ] Add `PUT /threads/{threadId}/read` route + IAM to `serverless.yml`
+- [ ] Write unit tests (8 cases)
+- [ ] Deploy + smoke test
+
+---
+
+## Task P3-T6 — closeExpiredThreads
+- [ ] Write `src/functions/threads/closeExpiredThreads.ts`
+  - [ ] Paginated Scan: type=post_booking AND status=open AND closedAt <= now
+  - [ ] ExpressionAttributeNames for reserved words (status, type)
+  - [ ] Promise.allSettled: UpdateItem closed + SNS push owner
+  - [ ] Log total closed count
+- [ ] Add EventBridge schedule cron(0 1 * * ? *) + IAM to `serverless.yml`
+- [ ] Write unit tests (8 cases)
+- [ ] Deploy + manually invoke → verify
+
+---
+
+## Checkpoint — Phase 3 E2E Smoke Test
+- [ ] createThread → 201, METADATA + MSG in DynamoDB
+- [ ] listThreads → threads with vet, dog, lastMessage, unreadCount
+- [ ] getThread → full messages, senderName, dogProfileVisible=true
+- [ ] sendMessage → 201, MSG in DynamoDB, SNS triggered
+- [ ] markThreadRead → markedRead count correct
+- [ ] closeExpiredThreads manual invoke → status=closed in DynamoDB
+- [ ] welcome plan gate: second thread in same month → 403 MONTHLY_LIMIT_REACHED
+- [ ] Zero Lambda errors in CloudWatch
+- [ ] Sign off Phase 3 ✅ → begin Phase 4 planning
+
+---
+
+## Phase 3 Done Definition
+All tasks above checked. E2E smoke test passes. Zero Lambda errors. EventBridge rule visible in AWS console.
