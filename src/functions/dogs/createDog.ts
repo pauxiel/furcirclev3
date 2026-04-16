@@ -116,11 +116,12 @@ export const handler = async (
 
   await Promise.all(puts);
 
-  // Trigger Step Function async — fire and forget (do not await so client gets 201 immediately)
+  // Start Step Function execution — await the start (fast, ~50ms), not the execution itself
+  // State machine runs async after StartExecution returns
   const stateMachineArn = process.env['STATE_MACHINE_ARN'];
   if (stateMachineArn) {
-    sfn
-      .send(
+    try {
+      await sfn.send(
         new StartExecutionCommand({
           stateMachineArn,
           name: `plan-${dogId}`,
@@ -135,11 +136,11 @@ export const handler = async (
             environment: environment ?? null,
           }),
         }),
-      )
-      .catch(() => {
-        // SFN failure is non-blocking — dog is created, planStatus stays 'generating'
-        // Error will surface in CloudWatch / Step Functions console
-      });
+      );
+    } catch {
+      // SFN start failure is non-fatal — dog created, planStatus stays 'generating'
+      console.error(`Failed to start plan generation for dog ${dogId}`);
+    }
   }
 
   return success(
