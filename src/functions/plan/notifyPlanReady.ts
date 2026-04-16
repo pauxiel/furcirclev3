@@ -16,33 +16,27 @@ interface NotifyPlanReadyEvent {
 export const handler = async (event: NotifyPlanReadyEvent): Promise<Record<string, unknown>> => {
   const { ownerId, name } = event;
   const table = process.env['TABLE_NAME']!;
-  const platformAppArn = process.env['SNS_PLATFORM_APP_ARN'];
+  const topicArn = process.env['SNS_TOPIC_ARN'];
 
   const { Item: owner } = await docClient.send(
     new GetCommand({ TableName: table, Key: { PK: `OWNER#${ownerId}`, SK: 'PROFILE' } }),
   );
 
-  if (!owner || !owner['pushToken'] || !platformAppArn) {
+  if (!owner || !topicArn) {
     return { ...event };
   }
 
-  const pushToken = owner['pushToken'] as string;
-
-  // Create SNS endpoint (or use existing) and publish
-  // For Expo push notifications, publish message directly with the token
   await sns.send(
     new PublishCommand({
-      TargetArn: platformAppArn,
+      TopicArn: topicArn,
+      Subject: 'plan_ready',
       Message: JSON.stringify({
-        GCM: JSON.stringify({
-          notification: {
-            title: 'Plan ready!',
-            body: `${name}'s monthly wellness plan is ready 🐾`,
-          },
-          data: { pushToken },
-        }),
+        ownerId,
+        dogId: event.dogId,
+        dogName: name,
+        pushToken: owner['pushToken'] ?? null,
+        message: `${name}'s monthly wellness plan is ready 🐾`,
       }),
-      MessageStructure: 'json',
     }),
   );
 

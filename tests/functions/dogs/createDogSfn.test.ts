@@ -42,7 +42,7 @@ describe('createDog SFN trigger', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env['TABLE_NAME'] = 'furcircle-test';
-    process.env['PLAN_STATE_MACHINE_ARN'] = 'arn:aws:states:us-east-1:123:stateMachine:furcircle-generate-plan-dev';
+    process.env['STATE_MACHINE_ARN'] = 'arn:aws:states:us-east-1:123:stateMachine:furcircle-generate-plan-dev';
     mockDocClientSend.mockResolvedValue({});
     mockSfnClientSend.mockResolvedValue({ executionArn: 'arn:execution' });
   });

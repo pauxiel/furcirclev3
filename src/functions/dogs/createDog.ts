@@ -117,7 +117,7 @@ export const handler = async (
   await Promise.all(puts);
 
   // Trigger Step Function async — fire and forget (do not await so client gets 201 immediately)
-  const stateMachineArn = process.env['PLAN_STATE_MACHINE_ARN'];
+  const stateMachineArn = process.env['STATE_MACHINE_ARN'];
   if (stateMachineArn) {
     sfn
       .send(

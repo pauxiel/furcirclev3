@@ -35,26 +35,26 @@ describe('notifyPlanReady handler', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env['TABLE_NAME'] = 'furcircle-test';
-    process.env['SNS_PLATFORM_APP_ARN'] = 'arn:aws:sns:us-east-1:123:app/GCM/furcircle';
+    process.env['SNS_TOPIC_ARN'] = 'arn:aws:sns:us-east-1:123:furcircle-notifications-dev';
     mockSNSClientSend.mockResolvedValue({ MessageId: 'msg-1' });
   });
 
-  it('sends SNS notification when pushToken present', async () => {
+  it('sends SNS notification when owner found', async () => {
     mockDocClientSend.mockResolvedValueOnce({ Item: ownerProfile });
 
     await handler(planInput);
 
     expect(mockSNSClientSend).toHaveBeenCalledTimes(1);
     const cmd = mockSNSClientSend.mock.calls[0][0] as { input: Record<string, unknown> };
-    expect(cmd.input['TargetArn'] ?? cmd.input['Token']).toBeDefined();
+    expect(cmd.input['TopicArn']).toBe('arn:aws:sns:us-east-1:123:furcircle-notifications-dev');
   });
 
-  it('skips SNS when owner has no pushToken', async () => {
+  it('sends SNS even when owner has no pushToken (pushToken null in payload)', async () => {
     mockDocClientSend.mockResolvedValueOnce({ Item: { ...ownerProfile, pushToken: null } });
 
     await handler(planInput);
 
-    expect(mockSNSClientSend).not.toHaveBeenCalled();
+    expect(mockSNSClientSend).toHaveBeenCalledTimes(1);
   });
 
   it('returns input unchanged', async () => {
