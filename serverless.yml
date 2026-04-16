@@ -331,6 +331,41 @@ functions:
           - sns:Publish
         Resource: !Ref NotificationsTopic
 
+  listThreads:
+    handler: src/functions/threads/listThreads.handler
+    events:
+      - httpApi:
+          path: /threads
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub ${FurcircleTable.Arn}/index/GSI1
+      - Effect: Allow
+        Action:
+          - dynamodb:BatchGetItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  getThread:
+    handler: src/functions/threads/getThread.handler
+    events:
+      - httpApi:
+          path: /threads/{threadId}
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+        Resource: !GetAtt FurcircleTable.Arn
+
 build:
   esbuild:
     bundle: true
