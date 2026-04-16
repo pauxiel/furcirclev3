@@ -117,8 +117,9 @@ describe('logActivity handler', () => {
     });
     const values = (updateCall![0] as { input: { ExpressionAttributeValues: Record<string, unknown> } })
       .input.ExpressionAttributeValues;
-    // trainingBehaviour was 70, +2 = 72
-    expect(Object.values(values)).toContain(72);
+    // trainingBehaviour was 70, +2 = 72 — now stored as full categoryScores map
+    const catScores = values[':catScores'] as Record<string, number>;
+    expect(catScores.trainingBehaviour).toBe(72);
   });
 
   it('returns 403 when dog belongs to different owner', async () => {

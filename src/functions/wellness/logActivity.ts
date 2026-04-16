@@ -97,9 +97,9 @@ export const handler = async (
       new UpdateCommand({
         TableName: table,
         Key: { PK: `DOG#${dogId}`, SK: 'PROFILE' },
-        UpdateExpression: `SET categoryScores.${category} = :catScore, wellnessScore = :score, updatedAt = :now`,
+        UpdateExpression: 'SET categoryScores = :catScores, wellnessScore = :score, updatedAt = :now',
         ExpressionAttributeValues: {
-          ':catScore': newCategoryScore,
+          ':catScores': newCategoryScores,
           ':score': newWellnessScore,
           ':now': now,
         },
