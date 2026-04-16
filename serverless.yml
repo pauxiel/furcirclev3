@@ -366,6 +366,58 @@ functions:
           - dynamodb:Query
         Resource: !GetAtt FurcircleTable.Arn
 
+  sendMessage:
+    handler: src/functions/threads/sendMessage.handler
+    events:
+      - httpApi:
+          path: /threads/{threadId}/messages
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - sns:Publish
+        Resource: !Ref NotificationsTopic
+
+  markThreadRead:
+    handler: src/functions/threads/markThreadRead.handler
+    events:
+      - httpApi:
+          path: /threads/{threadId}/read
+          method: PUT
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  closeExpiredThreads:
+    handler: src/functions/threads/closeExpiredThreads.handler
+    timeout: 300
+    events:
+      - schedule: cron(0 1 * * ? *)
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Scan
+          - dynamodb:UpdateItem
+          - dynamodb:GetItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - sns:Publish
+        Resource: !Ref NotificationsTopic
+
 build:
   esbuild:
     bundle: true
