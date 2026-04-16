@@ -40,11 +40,11 @@
 
 ---
 
-## Task 4 — Dog Profile CRUD
-- [ ] Write `src/functions/dogs/createDog.js` (without Step Function trigger)
-- [ ] Write `src/functions/dogs/listDogs.js`
-- [ ] Write `src/functions/dogs/getDog.js`
-- [ ] Write `src/functions/dogs/updateDog.js`
+## Task 4 — Dog Profile CRUD ✅ (impl done, 23 tests)
+- [x] Write `src/functions/dogs/createDog.ts`
+- [x] Write `src/functions/dogs/listDogs.ts`
+- [x] Write `src/functions/dogs/getDog.ts`
+- [x] Write `src/functions/dogs/updateDog.ts`
 - [ ] Add routes + IAM to `serverless.yml`
 - [ ] Deploy + test all 4 endpoints
 - [ ] Verify ownership enforcement (403 for wrong owner)
@@ -52,9 +52,9 @@
 
 ---
 
-## Task 5 — Dog Photo Upload
-- [ ] Update `src/lib/s3.js` with presigned URL helper
-- [ ] Write `src/functions/dogs/getDogPhotoUrl.js`
+## Task 5 — Dog Photo Upload ✅ (impl done, 6 tests)
+- [x] `src/lib/s3.ts` presigned URL helper
+- [x] Write `src/functions/dogs/getDogPhotoUrl.ts`
 - [ ] Add S3 CORS config to `serverless.yml` (allow PUT)
 - [ ] Add route + IAM (`s3:PutObject`) to `serverless.yml`
 - [ ] Deploy + test: get URL → curl PUT to S3 → verify file exists
@@ -62,25 +62,25 @@
 
 ---
 
-## Task 6 — Step Function + AI Plan Generation
+## Task 6 — Step Function + AI Plan Generation ✅ (impl done, 19 tests)
 - [ ] Store Anthropic API key in SSM Parameter Store
-- [ ] Write `src/lib/claude.js` — Anthropic SDK wrapper, `generatePlan(dogProfile)`
+- [x] Write `src/lib/claude.ts` — Anthropic SDK wrapper, `generatePlan(dogProfile)`
 - [ ] Write `stepfunctions/generatePlan.asl.json`
-- [ ] Write `src/functions/plan/validateInput.js`
-- [ ] Write `src/functions/plan/callClaude.js` (build prompt, call Claude, parse JSON)
-- [ ] Write `src/functions/plan/savePlan.js` (write PLAN record, update dog planStatus)
-- [ ] Write `src/functions/plan/notifyPlanReady.js` (SNS publish)
-- [ ] Write `src/functions/plan/handlePlanError.js` (set planStatus=failed)
+- [x] Write `src/functions/plan/validateInput.ts`
+- [x] Write `src/functions/plan/callClaude.ts` (build prompt, call Claude, parse JSON)
+- [x] Write `src/functions/plan/savePlan.ts` (write PLAN record, update dog planStatus)
+- [x] Write `src/functions/plan/notifyPlanReady.ts` (SNS publish)
+- [x] Write `src/functions/plan/handlePlanError.ts` (set planStatus=failed)
 - [ ] Add Step Functions state machine to `serverless.yml`
-- [ ] Update `createDog.js` to call `sfn.startExecution()` after dog PutItem
+- [x] Update `createDog.ts` to call `sfn.startExecution()` after dog PutItem
 - [ ] Add IAM for Step Functions to createDog and for DynamoDB/SNS to plan Lambdas
 - [ ] Deploy + test: create dog → watch Step Function in console → verify plan in DynamoDB
 - [ ] Verify `planStatus=ready` on dog record after execution
 
 ---
 
-## Task 7 — Plan Read API
-- [ ] Write `src/functions/dogs/getCurrentPlan.js`
+## Task 7 — Plan Read API ✅ (impl done, 5 tests)
+- [x] Write `src/functions/dogs/getCurrentPlan.ts`
 - [ ] Add route to `serverless.yml`
 - [ ] Deploy + test: `GET /dogs/{dogId}/plan` returns full plan
 - [ ] Test: returns `{ planStatus: 'generating' }` when plan not yet ready
