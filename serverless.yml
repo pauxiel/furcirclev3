@@ -504,6 +504,25 @@ functions:
           - ssm:GetParameter
         Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/stripe/*
 
+  stripeWebhook:
+    handler: src/functions/subscriptions/stripeWebhook.handler
+    events:
+      - httpApi:
+          path: /webhooks/stripe
+          method: POST
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:UpdateItem
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub "${FurcircleTable.Arn}/index/*"
+      - Effect: Allow
+        Action:
+          - ssm:GetParameter
+        Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/stripe/*
+
 build:
   esbuild:
     bundle: true
