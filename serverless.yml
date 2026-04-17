@@ -9,6 +9,7 @@ provider:
   timeout: 29
   stage: ${opt:stage, 'dev'}
   environment:
+    STAGE: ${self:provider.stage}
     TABLE_NAME: !Ref FurcircleTable
     BUCKET_NAME: !Ref DogPhotosBucket
     SNS_TOPIC_ARN: !Ref NotificationsTopic
