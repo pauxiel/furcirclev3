@@ -9,6 +9,7 @@ provider:
   timeout: 29
   stage: ${opt:stage, 'dev'}
   environment:
+    STAGE: ${self:provider.stage}
     TABLE_NAME: !Ref FurcircleTable
     BUCKET_NAME: !Ref DogPhotosBucket
     SNS_TOPIC_ARN: !Ref NotificationsTopic
@@ -417,6 +418,307 @@ functions:
         Action:
           - sns:Publish
         Resource: !Ref NotificationsTopic
+
+  # ── Phase 4: Subscriptions ─────────────────────────────────────────────────
+
+  getSubscriptionPlans:
+    handler: src/functions/subscriptions/getSubscriptionPlans.handler
+    events:
+      - httpApi:
+          path: /subscriptions/plans
+          method: GET
+
+  createStripeCustomer:
+    handler: src/functions/subscriptions/createStripeCustomer.handler
+    events:
+      - httpApi:
+          path: /subscriptions/customer
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - ssm:GetParameter
+        Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/stripe/*
+
+  subscribeToPlan:
+    handler: src/functions/subscriptions/subscribeToPlan.handler
+    events:
+      - httpApi:
+          path: /subscriptions
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    environment:
+      STRIPE_PRICE_ID_PROTECTOR: ${ssm:/furcircle/${self:provider.stage}/stripe/protectorPriceId}
+      STRIPE_PRICE_ID_PROACTIVE: ${ssm:/furcircle/${self:provider.stage}/stripe/proactivePriceId}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - ssm:GetParameter
+        Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/stripe/*
+
+  cancelSubscription:
+    handler: src/functions/subscriptions/cancelSubscription.handler
+    events:
+      - httpApi:
+          path: /subscriptions
+          method: DELETE
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - ssm:GetParameter
+        Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/stripe/*
+
+  topUpCredits:
+    handler: src/functions/subscriptions/topUpCredits.handler
+    events:
+      - httpApi:
+          path: /subscriptions/credits/topup
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - ssm:GetParameter
+        Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/stripe/*
+
+  stripeWebhook:
+    handler: src/functions/subscriptions/stripeWebhook.handler
+    events:
+      - httpApi:
+          path: /webhooks/stripe
+          method: POST
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:UpdateItem
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub "${FurcircleTable.Arn}/index/*"
+      - Effect: Allow
+        Action:
+          - ssm:GetParameter
+        Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/stripe/*
+
+  listProviders:
+    handler: src/functions/providers/listProviders.handler
+    events:
+      - httpApi:
+          path: /providers
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:GetItem
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub "${FurcircleTable.Arn}/index/*"
+
+  getProvider:
+    handler: src/functions/providers/getProvider.handler
+    events:
+      - httpApi:
+          path: /providers/{vetId}
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub "${FurcircleTable.Arn}/index/*"
+
+  getProviderAvailability:
+    handler: src/functions/providers/getProviderAvailability.handler
+    events:
+      - httpApi:
+          path: /providers/{vetId}/availability
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+
+  getProviderAssessment:
+    handler: src/functions/providers/getProviderAssessment.handler
+    events:
+      - httpApi:
+          path: /providers/{vetId}/assessment
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource:
+          - !Sub "${FurcircleTable.Arn}/index/*"
+
+  submitAssessment:
+    handler: src/functions/assessments/submitAssessment.handler
+    events:
+      - httpApi:
+          path: /assessments
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:PutItem
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub "${FurcircleTable.Arn}/index/*"
+      - Effect: Allow
+        Action:
+          - sns:Publish
+        Resource: !Ref NotificationsTopic
+
+  getAssessment:
+    handler: src/functions/assessments/getAssessment.handler
+    events:
+      - httpApi:
+          path: /assessments/{assessmentId}
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+
+  createBooking:
+    handler: src/functions/bookings/createBooking.handler
+    events:
+      - httpApi:
+          path: /bookings
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+          - dynamodb:PutItem
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - sns:Publish
+        Resource: !Ref NotificationsTopic
+
+  listBookings:
+    handler: src/functions/bookings/listBookings.handler
+    events:
+      - httpApi:
+          path: /bookings
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:BatchGetItem
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub "${FurcircleTable.Arn}/index/*"
+
+  getBooking:
+    handler: src/functions/bookings/getBooking.handler
+    events:
+      - httpApi:
+          path: /bookings/{bookingId}
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+
+  cancelBooking:
+    handler: src/functions/bookings/cancelBooking.handler
+    events:
+      - httpApi:
+          path: /bookings/{bookingId}
+          method: DELETE
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - sns:Publish
+        Resource: !Ref NotificationsTopic
+
+  getAgoraToken:
+    handler: src/functions/bookings/getAgoraToken.handler
+    events:
+      - httpApi:
+          path: /bookings/{bookingId}/token
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - ssm:GetParameter
+        Resource:
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/agora/appId
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/agora/appCertificate
 
 build:
   esbuild:
