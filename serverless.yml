@@ -817,6 +817,49 @@ functions:
           - sns:Publish
         Resource: !Ref NotificationsTopic
 
+  vetGetAvailability:
+    handler: src/functions/vet/vetGetAvailability.handler
+    events:
+      - httpApi:
+          path: /vet/availability
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: !GetAtt FurcircleTable.Arn
+
+  vetSetAvailability:
+    handler: src/functions/vet/vetSetAvailability.handler
+    events:
+      - httpApi:
+          path: /vet/availability/{date}
+          method: PUT
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  vetBulkSetAvailability:
+    handler: src/functions/vet/vetBulkSetAvailability.handler
+    events:
+      - httpApi:
+          path: /vet/availability
+          method: PUT
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: !GetAtt FurcircleTable.Arn
+
 build:
   esbuild:
     bundle: true
