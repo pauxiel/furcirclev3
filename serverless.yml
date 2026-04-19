@@ -932,6 +932,94 @@ functions:
           - sns:Publish
         Resource: !Ref NotificationsTopic
 
+  vetListThreads:
+    handler: src/functions/vet/vetListThreads.handler
+    events:
+      - httpApi:
+          path: /vet/threads
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:BatchGetItem
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub "${FurcircleTable.Arn}/index/*"
+
+  vetGetThread:
+    handler: src/functions/vet/vetGetThread.handler
+    events:
+      - httpApi:
+          path: /vet/threads/{threadId}
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:BatchGetItem
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+
+  vetSendMessage:
+    handler: src/functions/vet/vetSendMessage.handler
+    events:
+      - httpApi:
+          path: /vet/threads/{threadId}/messages
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - sns:Publish
+        Resource: !Ref NotificationsTopic
+
+  vetCloseThread:
+    handler: src/functions/vet/vetCloseThread.handler
+    events:
+      - httpApi:
+          path: /vet/threads/{threadId}/close
+          method: PUT
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - sns:Publish
+        Resource: !Ref NotificationsTopic
+
+  vetMarkThreadRead:
+    handler: src/functions/vet/vetMarkThreadRead.handler
+    events:
+      - httpApi:
+          path: /vet/threads/{threadId}/read
+          method: PUT
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+
 build:
   esbuild:
     bundle: true
