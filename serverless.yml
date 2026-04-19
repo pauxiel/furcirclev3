@@ -860,6 +860,78 @@ functions:
           - dynamodb:PutItem
         Resource: !GetAtt FurcircleTable.Arn
 
+  vetListBookings:
+    handler: src/functions/vet/vetListBookings.handler
+    events:
+      - httpApi:
+          path: /vet/bookings
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:BatchGetItem
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub "${FurcircleTable.Arn}/index/*"
+
+  vetGetBooking:
+    handler: src/functions/vet/vetGetBooking.handler
+    events:
+      - httpApi:
+          path: /vet/bookings/{bookingId}
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:BatchGetItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  vetGetAgoraToken:
+    handler: src/functions/vet/vetGetAgoraToken.handler
+    events:
+      - httpApi:
+          path: /vet/bookings/{bookingId}/token
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - ssm:GetParameter
+        Resource:
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/agora/appId
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/agora/appCertificate
+
+  vetSubmitPostCallSummary:
+    handler: src/functions/vet/vetSubmitPostCallSummary.handler
+    events:
+      - httpApi:
+          path: /vet/bookings/{bookingId}/summary
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+          - dynamodb:PutItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - sns:Publish
+        Resource: !Ref NotificationsTopic
+
 build:
   esbuild:
     bundle: true
