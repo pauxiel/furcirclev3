@@ -455,6 +455,9 @@ functions:
           method: POST
           authorizer:
             name: cognitoAuthorizer
+    environment:
+      STRIPE_PRICE_ID_PROTECTOR: ${ssm:/furcircle/${self:provider.stage}/stripe/protectorPriceId}
+      STRIPE_PRICE_ID_PROACTIVE: ${ssm:/furcircle/${self:provider.stage}/stripe/proactivePriceId}
     iamRoleStatements:
       - Effect: Allow
         Action:
@@ -535,6 +538,7 @@ functions:
       - Effect: Allow
         Action:
           - dynamodb:Query
+          - dynamodb:GetItem
         Resource:
           - !GetAtt FurcircleTable.Arn
           - !Sub "${FurcircleTable.Arn}/index/*"

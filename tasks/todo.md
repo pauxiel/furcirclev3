@@ -278,3 +278,178 @@ All tasks above checked. E2E smoke test passes. Home screen < 500ms. Zero Lambda
 
 ## Phase 3 Done Definition
 All tasks above checked. E2E smoke test passes. Zero Lambda errors. EventBridge rule visible in AWS console.
+
+---
+
+# FurCircle Phase 4 — Task List
+
+## Pre-Build (resolve before P4-T1)
+- [ ] **DO** Add Stripe secret key to SSM: `aws ssm put-parameter --name /furcircle/dev/stripe/secretKey --value <key> --type SecureString`
+- [ ] **DO** Add Stripe webhook secret to SSM: `aws ssm put-parameter --name /furcircle/dev/stripe/webhookSecret --value <secret> --type SecureString`
+- [ ] **DO** Add Agora App ID to SSM: `aws ssm put-parameter --name /furcircle/dev/agora/appId --value <id> --type String`
+- [ ] **DO** Add Agora App Certificate to SSM: `aws ssm put-parameter --name /furcircle/dev/agora/appCertificate --value <cert> --type SecureString`
+- [ ] **DECIDE** Stripe webhook owner lookup: find owner by stripeCustomerId via email lookup (GSI1 EMAIL#) or scan? (Recommend: use email from Stripe customer object → GSI1 lookup)
+- [ ] **DECIDE** Credits rollover month-to-month or reset on billing renewal? (Recommend: reset — aligns with Stripe invoice cycle, simpler)
+- [ ] **DECIDE** Assessment per owner+vet: one-time forever or resets after N months? (Recommend: one-time per owner+vet pair, vet-initiated re-assessment only)
+
+---
+
+## Task P4-T1 — Stripe + Agora Shared Libs
+- [ ] Run `npm install stripe agora-token`
+- [ ] Write `src/lib/stripe.ts` — Stripe SDK singleton, reads `/furcircle/${stage}/stripe/secretKey` from SSM at cold start
+- [ ] Write `src/lib/agora.ts` — `generateRtcToken(channelName, uid, expirySeconds)` using `agora-token` package, reads appId + appCertificate from SSM at cold start
+- [ ] Add SSM param names to `serverless.yml` environment block for Phase 4 Lambdas
+- [ ] Deploy: `sls deploy --stage dev` — verify no missing module errors
+
+---
+
+## Task P4-T2 — Subscription Management APIs
+- [ ] Write `src/functions/subscriptions/getSubscriptionPlans.ts`
+  - [ ] No Cognito auth — public endpoint
+  - [ ] Return hardcoded plan catalogue (welcome, protector, proactive) matching spec
+- [ ] Write `src/functions/subscriptions/createStripeCustomer.ts`
+  - [ ] Idempotent — if `stripeCustomerId` already set on subscription record, return it unchanged
+  - [ ] Create Stripe customer using owner's email (GetItem OWNER PROFILE)
+  - [ ] UpdateItem SUBSCRIPTION with `stripeCustomerId`
+- [ ] Write `src/functions/subscriptions/subscribeToPlan.ts`
+  - [ ] GetItem SUBSCRIPTION → verify stripeCustomerId exists
+  - [ ] Attach `paymentMethodId` to Stripe customer
+  - [ ] Create Stripe Subscription using plan's `stripePriceId`
+  - [ ] UpdateItem SUBSCRIPTION: plan, stripeSubscriptionId, status=active, currentPeriodEnd
+  - [ ] If upgrading to proactive: SET creditBalance=70 (first month)
+- [ ] Write `src/functions/subscriptions/cancelSubscription.ts`
+  - [ ] Stripe: `subscriptions.update(id, { cancel_at_period_end: true })`
+  - [ ] UpdateItem SUBSCRIPTION: status=cancelling
+- [ ] Write `src/functions/subscriptions/topUpCredits.ts`
+  - [ ] Validate `credits` is one of 10, 20, 50
+  - [ ] Create + confirm Stripe PaymentIntent for corresponding amount
+  - [ ] ADD creditBalance :credits on SUBSCRIPTION record
+- [ ] Add all 5 routes + IAM to `serverless.yml`
+- [ ] Write unit tests (getSubscriptionPlans: 1, createStripeCustomer: 3, subscribeToPlan: 4, cancelSubscription: 2, topUpCredits: 4)
+- [ ] Deploy + smoke test each endpoint
+
+---
+
+## Task P4-T3 — Stripe Webhook
+- [ ] Write `src/functions/subscriptions/stripeWebhook.ts`
+  - [ ] Verify `stripe-signature` header using webhookSecret from SSM → 400 on invalid signature
+  - [ ] Handle `invoice.payment_succeeded`: if plan=proactive, SET creditBalance=70 (reset)
+  - [ ] Handle `invoice.payment_failed`: SET status=past_due, try/catch SNS push to owner
+  - [ ] Handle `customer.subscription.updated`: sync plan, status, currentPeriodEnd to SUBSCRIPTION
+  - [ ] Handle `customer.subscription.deleted`: SET plan=welcome, creditBalance=0, status=active
+  - [ ] Always return 200 `{}` — log errors internally, never surface to Stripe
+  - [ ] Owner lookup: get customer email from Stripe event → GSI1 EMAIL#${email} → OWNER
+- [ ] Add `POST /webhooks/stripe` route (no Cognito auth) to `serverless.yml`
+- [ ] Add IAM: dynamodb:Query (GSI1 index), dynamodb:UpdateItem, ssm:GetParameter, sns:Publish
+- [ ] Write unit tests (5 cases: each event type + invalid signature)
+- [ ] Deploy + test with Stripe CLI: `stripe listen --forward-to https://<api>/dev/webhooks/stripe`
+
+---
+
+## Task P4-T4 — Provider + Availability APIs
+- [ ] Write `src/functions/providers/listProviders.ts`
+  - [ ] Validate `type` query param: `behaviourist` or `nutritionist` (400 if missing/invalid)
+  - [ ] Query GSI3: `GSI3PK=PROVIDER_TYPE#${type}`, ScanIndexForward=false (rating DESC)
+  - [ ] For each vet: Query GSI1 `OWNER#${ownerId}` + `ASSESSMENT#${vetId}` → derive assessmentStatus
+  - [ ] GetItem SUBSCRIPTION → derive canBook: behaviourist = assessmentStatus=approved AND plan=proactive; nutritionist = plan=proactive
+- [ ] Write `src/functions/providers/getProvider.ts`
+  - [ ] GetItem `VET#${vetId}/PROFILE`
+  - [ ] Query GSI1 for owner's assessment with this vet
+  - [ ] Query vet availability: next available date
+  - [ ] Return full provider shape including bio, nextAvailable
+- [ ] Write `src/functions/providers/getProviderAvailability.ts`
+  - [ ] Validate startDate + endDate (both required, max 14-day window → 400 if exceeded)
+  - [ ] Query `PK=VET#${vetId}`, `SK between AVAIL#${startDate} and AVAIL#${endDate}`
+  - [ ] Return per-date slot arrays (empty array for dates with no slots)
+- [ ] Write `src/functions/providers/getProviderAssessment.ts`
+  - [ ] `GET /providers/{vetId}/assessment`
+  - [ ] Query GSI1: `GSI1PK=OWNER#${ownerId}`, `GSI1SK=ASSESSMENT#${vetId}`
+  - [ ] Return assessment record or 404 if none exists
+- [ ] Add all 4 routes + IAM to `serverless.yml`
+- [ ] Write unit tests (listProviders: 5, getProvider: 3, getProviderAvailability: 4, getProviderAssessment: 3)
+- [ ] Deploy + smoke test (requires seed vet records in DynamoDB)
+
+---
+
+## Task P4-T5 — Assessment APIs
+- [ ] Write `src/functions/assessments/submitAssessment.ts`
+  - [ ] Validate: description min 50 chars (400), mediaUrls max 3 items (400), each must be S3 URL under `assessments/` path
+  - [ ] Query GSI1 `OWNER#${ownerId}` + `ASSESSMENT#${vetId}` → 409 ASSESSMENT_EXISTS if pending or approved
+  - [ ] PutItem ASSESSMENT record: status=pending, GSI1 + GSI2 keys set
+  - [ ] try/catch SNS push notification to vet (non-fatal)
+- [ ] Write `src/functions/assessments/getAssessment.ts`
+  - [ ] GetItem `ASSESSMENT#${assessmentId}/ASSESSMENT`
+  - [ ] Ownership check: ownerId === userId → 403 if mismatch
+  - [ ] Return full assessment including vetResponse + reviewedAt
+- [ ] Add `POST /assessments` + `GET /assessments/{assessmentId}` routes + IAM to `serverless.yml`
+- [ ] Write unit tests (submitAssessment: 6, getAssessment: 4)
+- [ ] Deploy + smoke test
+
+---
+
+## Task P4-T6 — Booking CRUD
+- [ ] Write `src/functions/bookings/createBooking.ts`
+  - [ ] Validate: duration 15 or 30, scheduledAt is future datetime
+  - [ ] GetItem SUBSCRIPTION → 403 if plan ≠ proactive; 402 INSUFFICIENT_CREDITS if creditBalance < duration
+  - [ ] If behaviourist: GetItem assessment → 400 if assessmentId missing or status ≠ approved
+  - [ ] GetItem vet availability slot → 409 SLOT_UNAVAILABLE if slot taken
+  - [ ] Atomic credit deduction: UpdateItem SUBSCRIPTION with ConditionExpression `creditBalance >= :cost` → 402 on failure
+  - [ ] UpdateItem vet availability: mark slot unavailable
+  - [ ] PutItem BOOKING: status=upcoming, agoraChannelId=`furcircle-booking-${bookingId}`, GSI1 + GSI2 keys with status embedded in SK
+  - [ ] try/catch SNS push to vet + owner (non-fatal)
+- [ ] Write `src/functions/bookings/listBookings.ts`
+  - [ ] Optional `status` param: `upcoming` → `BOOKING#upcoming`, `past` → `BOOKING#completed` (default: all)
+  - [ ] Query GSI1: `GSI1PK=OWNER#${ownerId}`, `GSI1SK begins_with BOOKING#${statusPrefix}`
+  - [ ] BatchGetItem for vet + dog profiles (flatten into response)
+- [ ] Write `src/functions/bookings/getBooking.ts`
+  - [ ] GetItem `BOOKING#${bookingId}/BOOKING`
+  - [ ] Ownership check: ownerId === userId → 403
+  - [ ] Return full booking including agoraChannelId and postCallSummary (if set)
+- [ ] Write `src/functions/bookings/cancelBooking.ts`
+  - [ ] GetItem booking → verify ownerId === userId (403), status=upcoming (400)
+  - [ ] Compute cancellation window: scheduledAt − now > 24h → full refund; else no refund
+  - [ ] UpdateItem booking: status=cancelled
+  - [ ] If refund eligible: ADD creditBalance :cost on SUBSCRIPTION record
+  - [ ] UpdateItem vet availability: restore slot to available
+  - [ ] try/catch SNS push to vet (non-fatal)
+- [ ] Add all 4 routes + IAM to `serverless.yml`
+- [ ] Write unit tests (createBooking: 8, listBookings: 4, getBooking: 3, cancelBooking: 6)
+- [ ] Deploy + smoke test
+
+---
+
+## Task P4-T7 — Agora Token
+- [ ] Write `src/functions/bookings/getAgoraToken.ts`
+  - [ ] GetItem `BOOKING#${bookingId}/BOOKING`
+  - [ ] Auth check: userId must be booking's ownerId OR vetId → 403 otherwise
+  - [ ] Verify booking status=upcoming → 400 if not
+  - [ ] Verify scheduledAt within ±30 minutes of now → 403 TOO_EARLY if more than 30min before
+  - [ ] Generate UID: deterministic uint32 hash of userId (e.g. djb2 or xxhash)
+  - [ ] Call `src/lib/agora.ts` generateRtcToken(agoraChannelId, uid, 3600)
+  - [ ] Return token, channelId, uid, appId, expiresAt
+- [ ] Add `GET /bookings/{bookingId}/token` route + IAM to `serverless.yml`
+- [ ] Write unit tests (6 cases: owner access, vet access, 403 wrong user, 403 too early, 400 not upcoming, valid token shape)
+- [ ] Deploy + smoke test
+
+---
+
+## Checkpoint — Phase 4 E2E Smoke Test
+- [ ] GET /subscriptions/plans (no auth) → 3 plans, correct shape
+- [ ] POST /subscriptions/customer → stripeCustomerId stored in SUBSCRIPTION record
+- [ ] POST /subscriptions (proactive) → plan=proactive, creditBalance=70, status=active
+- [ ] GET /providers?type=behaviourist → list with assessmentStatus=none, canBook=false
+- [ ] POST /assessments → 201 ASSESSMENT record status=pending
+- [ ] GET /assessments/{id} → pending status + description
+- [ ] POST /bookings (behaviourist, non-approved assessment) → 400
+- [ ] POST /bookings (valid proactive, approved assessment) → 201 with agoraChannelId, creditBalance deducted
+- [ ] DELETE /bookings/{id} (> 24h before) → status=cancelled, credits refunded
+- [ ] GET /bookings/{id}/token (within ±30min window) → valid Agora RTC token
+- [ ] POST /webhooks/stripe invoice.payment_succeeded → creditBalance reset to 70 in DynamoDB
+- [ ] POST /webhooks/stripe customer.subscription.deleted → plan=welcome, creditBalance=0
+- [ ] Zero Lambda errors in CloudWatch
+- [ ] Sign off Phase 4 ✅ → begin Phase 5 planning
+
+---
+
+## Phase 4 Done Definition
+All tasks above checked. E2E smoke test passes. Stripe webhook verified via Stripe CLI. Agora token generates valid RTC token for booking owner and vet. Zero Lambda errors.
