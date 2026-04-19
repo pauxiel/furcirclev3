@@ -720,6 +720,52 @@ functions:
           - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/agora/appId
           - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/furcircle/${self:provider.stage}/agora/appCertificate
 
+  vetGetProfile:
+    handler: src/functions/vet/vetGetProfile.handler
+    events:
+      - httpApi:
+          path: /vet/me
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  vetUpdateProfile:
+    handler: src/functions/vet/vetUpdateProfile.handler
+    events:
+      - httpApi:
+          path: /vet/me
+          method: PUT
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  vetUploadPhotoUrl:
+    handler: src/functions/vet/vetUploadPhotoUrl.handler
+    events:
+      - httpApi:
+          path: /vet/me/photo
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+        Resource: !Sub arn:aws:s3:::${DogPhotosBucket}/vets/*
+
 build:
   esbuild:
     bundle: true
