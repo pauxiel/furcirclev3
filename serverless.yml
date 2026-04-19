@@ -766,6 +766,57 @@ functions:
           - s3:PutObject
         Resource: !Sub arn:aws:s3:::${DogPhotosBucket}/vets/*
 
+  vetListAssessments:
+    handler: src/functions/vet/vetListAssessments.handler
+    events:
+      - httpApi:
+          path: /vet/assessments
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:BatchGetItem
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub "${FurcircleTable.Arn}/index/*"
+
+  vetGetAssessment:
+    handler: src/functions/vet/vetGetAssessment.handler
+    events:
+      - httpApi:
+          path: /vet/assessments/{assessmentId}
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:BatchGetItem
+        Resource: !GetAtt FurcircleTable.Arn
+
+  vetRespondToAssessment:
+    handler: src/functions/vet/vetRespondToAssessment.handler
+    events:
+      - httpApi:
+          path: /vet/assessments/{assessmentId}/respond
+          method: PUT
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - sns:Publish
+        Resource: !Ref NotificationsTopic
+
 build:
   esbuild:
     bundle: true
