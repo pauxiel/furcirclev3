@@ -20,7 +20,11 @@ info:
     - User Pool ID: `us-east-1_SkVrkM3U0`
     - App Client ID: `5uka63bgr9qs1j8jdhi2sen2g3`
 
-    Full code examples: [docs/auth-guide.md](https://github.com/pauxiel/furcirclev3/blob/main/docs/auth-guide.md)
+    **Sign Out — two options:**
+    - `signOut()` — local only, instant, no network. Use for normal logout button.
+    - `signOutGlobal()` — revokes refresh token server-side, kicks all devices. Use for security logout / "sign out everywhere".
+
+    Full code examples (signUp, signIn, refresh, signOut, signOutGlobal, forgotPassword): [docs/auth-guide.md](https://github.com/pauxiel/furcirclev3/blob/main/docs/auth-guide.md)
   version: 1.0.0
 
 servers:
