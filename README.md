@@ -10,14 +10,34 @@ AI-powered monthly wellness plans for dog owners. Serverless backend on AWS.
 
 ## Table of Contents
 
+- [Authentication (Frontend SDK Guide)](#authentication)
 - [Phase 1 — Auth & Onboarding](#phase-1--auth--onboarding)
 - [Phase 2 — Home & Wellness](#phase-2--home--wellness)
 - [Phase 3 — Messaging](#phase-3--messaging)
 - [Phase 4 — Bookings & Subscriptions](#phase-4--bookings--subscriptions)
 - [Phase 5 — Vet API](#phase-5--vet-api)
+- [Phase 6 — Admin API](#phase-6--admin-api)
 - [Database Design](#database-design)
 - [Development](#development)
 - [Deploy](#deploy)
+
+---
+
+## Authentication
+
+Auth uses **AWS Cognito SDK directly** — there are no `/auth/login` REST endpoints.
+
+| | |
+|-|-|
+| User Pool ID | `us-east-1_SkVrkM3U0` |
+| App Client ID | `5uka63bgr9qs1j8jdhi2sen2g3` |
+| Region | `us-east-1` |
+
+Full guide with React Native code examples → [`docs/auth-guide.md`](docs/auth-guide.md)
+
+```
+signUp → confirmSignUp (OTP) → signIn → idToken → Authorization: Bearer {idToken}
+```
 
 ---
 
@@ -131,6 +151,21 @@ Vet-side dashboard, assessment queue, availability, booking management, messagin
 - `GET /vet/dashboard` — counts of pending items
 - `GET /vet/notifications` — in-app notifications
 - `PUT /vet/notifications/{notifId}/read` — mark notification as read
+
+---
+
+## Phase 6 — Admin API
+
+Platform management. All endpoints require `admins` Cognito group membership — return `403` otherwise.
+
+**Endpoints:**
+- `GET /admin/metrics` — total owners, active subscriptions, bookings today
+- `GET /admin/users` — list all owners with subscription status
+- `GET /admin/users/{userId}` — owner detail with dogs
+- `GET /admin/vets` — list all vets with active status
+- `PUT /admin/vets/{vetId}/deactivate` — deactivate a vet account
+- `GET /admin/bookings` — all bookings (filterable by status)
+- `POST /admin/dogs/{dogId}/plan-refresh` — trigger AI plan regeneration
 
 ---
 

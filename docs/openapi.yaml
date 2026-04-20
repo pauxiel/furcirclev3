@@ -1,7 +1,26 @@
 openapi: 3.0.3
 info:
   title: FurCircle API
-  description: AI-powered dog wellness platform. All endpoints require a Cognito idToken as Bearer token unless marked public.
+  description: |
+    AI-powered dog wellness platform.
+
+    ## Authentication
+
+    Auth is **not** handled via REST endpoints. Use the AWS Cognito SDK directly in your React Native app.
+
+    **Flow:**
+    1. `signUp(email, password)` → Cognito sends OTP
+    2. `confirmSignUp(email, otp)` → triggers owner profile creation automatically
+    3. `signIn(email, password)` → returns `idToken` (valid 1 hour)
+    4. Pass token to every API call: `Authorization: Bearer {idToken}`
+    5. Use refresh token for silent re-auth (valid 30 days)
+
+    **Cognito credentials:**
+    - Region: `us-east-1`
+    - User Pool ID: `us-east-1_SkVrkM3U0`
+    - App Client ID: `5uka63bgr9qs1j8jdhi2sen2g3`
+
+    Full code examples: [docs/auth-guide.md](https://github.com/pauxiel/furcirclev3/blob/main/docs/auth-guide.md)
   version: 1.0.0
 
 servers:
