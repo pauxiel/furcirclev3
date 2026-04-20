@@ -1020,6 +1020,51 @@ functions:
           - dynamodb:UpdateItem
         Resource: !GetAtt FurcircleTable.Arn
 
+  vetGetDashboard:
+    handler: src/functions/vet/vetGetDashboard.handler
+    events:
+      - httpApi:
+          path: /vet/dashboard
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub "${FurcircleTable.Arn}/index/*"
+
+  vetGetNotifications:
+    handler: src/functions/vet/vetGetNotifications.handler
+    events:
+      - httpApi:
+          path: /vet/notifications
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: !GetAtt FurcircleTable.Arn
+
+  vetMarkNotificationRead:
+    handler: src/functions/vet/vetMarkNotificationRead.handler
+    events:
+      - httpApi:
+          path: /vet/notifications/{notifId}/read
+          method: PUT
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+        Resource: !GetAtt FurcircleTable.Arn
+
 build:
   esbuild:
     bundle: true
