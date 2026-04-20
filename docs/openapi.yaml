@@ -1,7 +1,26 @@
 openapi: 3.0.3
 info:
   title: FurCircle API
-  description: AI-powered dog wellness platform. All endpoints require a Cognito idToken as Bearer token unless marked public.
+  description: |
+    AI-powered dog wellness platform.
+
+    ## Authentication
+
+    Auth is **not** handled via REST endpoints. Use the AWS Cognito SDK directly in your React Native app.
+
+    **Flow:**
+    1. `signUp(email, password)` → Cognito sends OTP
+    2. `confirmSignUp(email, otp)` → triggers owner profile creation automatically
+    3. `signIn(email, password)` → returns `idToken` (valid 1 hour)
+    4. Pass token to every API call: `Authorization: Bearer {idToken}`
+    5. Use refresh token for silent re-auth (valid 30 days)
+
+    **Cognito credentials:**
+    - Region: `us-east-1`
+    - User Pool ID: `us-east-1_SkVrkM3U0`
+    - App Client ID: `5uka63bgr9qs1j8jdhi2sen2g3`
+
+    Full code examples: [docs/auth-guide.md](https://github.com/pauxiel/furcirclev3/blob/main/docs/auth-guide.md)
   version: 1.0.0
 
 servers:
@@ -216,6 +235,8 @@ tags:
     description: Thread management (vet-side)
   - name: Vet Dashboard
     description: Dashboard and notifications (vet-side)
+  - name: Admin
+    description: Platform management — requires admins Cognito group
 
 paths:
 
@@ -1425,3 +1446,174 @@ paths:
                   notifId: { type: string }
                   readAt: { type: string, format: date-time }
         '404': { description: Notification not found }
+
+  # ─── Phase 6: Admin ───────────────────────────────────────────────────────
+
+  /admin/metrics:
+    get:
+      tags: [Admin]
+      summary: Platform metrics — total owners, active subscriptions, bookings today
+      responses:
+        '200':
+          description: Metrics snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalOwners: { type: integer }
+                  activeSubscriptions: { type: integer }
+                  bookingsToday: { type: integer }
+        '403': { description: Not an admin }
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: List all owners with subscription status
+      responses:
+        '200':
+          description: Owner list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        userId: { type: string }
+                        firstName: { type: string }
+                        lastName: { type: string }
+                        email: { type: string }
+                        createdAt: { type: string, format: date-time }
+                        subscription:
+                          type: object
+                          nullable: true
+                          properties:
+                            plan: { type: string }
+                            creditBalance: { type: integer }
+                            status: { type: string }
+
+  /admin/users/{userId}:
+    get:
+      tags: [Admin]
+      summary: Get owner detail with dogs
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Owner with subscription and dogs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId: { type: string }
+                  firstName: { type: string }
+                  lastName: { type: string }
+                  email: { type: string }
+                  subscription: { type: object, nullable: true }
+                  dogs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        dogId: { type: string }
+                        name: { type: string }
+                        breed: { type: string }
+                        planStatus: { type: string }
+        '404': { description: User not found }
+
+  /admin/vets:
+    get:
+      tags: [Admin]
+      summary: List all vets
+      responses:
+        '200':
+          description: Vet list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        vetId: { type: string }
+                        firstName: { type: string }
+                        lastName: { type: string }
+                        providerType: { type: string }
+                        isActive: { type: boolean }
+                        rating: { type: number }
+                        reviewCount: { type: integer }
+
+  /admin/vets/{vetId}/deactivate:
+    put:
+      tags: [Admin]
+      summary: Deactivate a vet account
+      parameters:
+        - name: vetId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Vet deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vetId: { type: string }
+                  isActive: { type: boolean, example: false }
+        '404': { description: Vet not found }
+
+  /admin/bookings:
+    get:
+      tags: [Admin]
+      summary: List all bookings across all users
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [upcoming, completed, cancelled] }
+      responses:
+        '200':
+          description: All bookings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bookings:
+                    type: array
+                    items: { $ref: '#/components/schemas/Booking' }
+                  total: { type: integer }
+
+  /admin/dogs/{dogId}/plan-refresh:
+    post:
+      tags: [Admin]
+      summary: Trigger AI wellness plan regeneration for a dog
+      parameters:
+        - name: dogId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Plan refresh triggered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dogId: { type: string }
+                  planStatus: { type: string, example: generating }
+                  triggeredAt: { type: string, format: date-time }
+        '404': { description: Dog not found }
