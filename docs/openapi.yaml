@@ -1,0 +1,1427 @@
+openapi: 3.0.3
+info:
+  title: FurCircle API
+  description: AI-powered dog wellness platform. All endpoints require a Cognito idToken as Bearer token unless marked public.
+  version: 1.0.0
+
+servers:
+  - url: https://057mg3hls1.execute-api.us-east-1.amazonaws.com
+    description: Dev
+
+components:
+  securitySchemes:
+    cognitoAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Cognito idToken from `initiateAuth`
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: DOG_NOT_FOUND
+        message:
+          type: string
+          example: No dog found with id abc123
+
+    OwnerProfile:
+      type: object
+      properties:
+        userId: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string }
+        pushToken: { type: string, nullable: true }
+        referralCode: { type: string }
+        subscription:
+          type: object
+          properties:
+            plan: { type: string, enum: [welcome, protector, proactive] }
+            creditBalance: { type: integer }
+            status: { type: string }
+            currentPeriodEnd: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    Dog:
+      type: object
+      properties:
+        dogId: { type: string }
+        ownerId: { type: string }
+        name: { type: string }
+        breed: { type: string }
+        ageMonths: { type: integer }
+        dateOfBirth: { type: string, nullable: true }
+        photoUrl: { type: string, nullable: true }
+        adoptedFromShelter: { type: boolean }
+        spayedNeutered: { type: string, enum: [yes, no, not_yet] }
+        medicalConditions: { type: string, nullable: true }
+        environment: { type: string, nullable: true }
+        wellnessScore: { type: integer, nullable: true }
+        planStatus: { type: string, enum: [generating, ready, failed] }
+        createdAt: { type: string, format: date-time }
+
+    WellnessPlan:
+      type: object
+      properties:
+        dogId: { type: string }
+        month: { type: string, example: "2026-04" }
+        ageMonthsAtPlan: { type: integer }
+        whatToExpect: { type: string }
+        whatToDo:
+          type: array
+          items:
+            type: object
+            properties:
+              text: { type: string }
+        whatNotToDo:
+          type: array
+          items:
+            type: object
+            properties:
+              text: { type: string }
+        watchFor:
+          type: array
+          items:
+            type: object
+            properties:
+              text: { type: string }
+        earlyWarningSigns:
+          type: array
+          items:
+            type: object
+            properties:
+              text: { type: string }
+              action: { type: string }
+        wellnessScore: { type: integer }
+        generatedAt: { type: string, format: date-time }
+
+    Thread:
+      type: object
+      properties:
+        threadId: { type: string }
+        type: { type: string, enum: [ask_a_vet, post_booking] }
+        status: { type: string, enum: [open, closed] }
+        vetId: { type: string }
+        dogId: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    Message:
+      type: object
+      properties:
+        messageId: { type: string }
+        senderType: { type: string, enum: [owner, vet] }
+        body: { type: string }
+        readAt: { type: string, nullable: true, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    SubscriptionPlan:
+      type: object
+      properties:
+        planId: { type: string, enum: [welcome, protector, proactive] }
+        name: { type: string }
+        price: { type: number }
+        currency: { type: string }
+        credits: { type: integer }
+        features: { type: array, items: { type: string } }
+
+    Provider:
+      type: object
+      properties:
+        vetId: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        providerType: { type: string, enum: [vet, behaviourist] }
+        specialisation: { type: string }
+        bio: { type: string }
+        photoUrl: { type: string, nullable: true }
+        rating: { type: number }
+        reviewCount: { type: integer }
+        assessmentStatus: { type: string, enum: [none, pending, approved, rejected] }
+        canBook: { type: boolean }
+        nextAvailable: { type: string, nullable: true, format: date }
+
+    Booking:
+      type: object
+      properties:
+        bookingId: { type: string }
+        vetId: { type: string }
+        dogId: { type: string }
+        duration: { type: integer, enum: [15, 30] }
+        scheduledAt: { type: string, format: date-time }
+        status: { type: string, enum: [upcoming, completed, cancelled] }
+        agoraChannelId: { type: string }
+        creditsCharged: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    VetProfile:
+      type: object
+      properties:
+        vetId: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string }
+        providerType: { type: string, enum: [vet, behaviourist] }
+        specialisation: { type: string }
+        bio: { type: string }
+        photoUrl: { type: string, nullable: true }
+        rating: { type: number }
+        reviewCount: { type: integer }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    Assessment:
+      type: object
+      properties:
+        assessmentId: { type: string }
+        vetId: { type: string }
+        ownerId: { type: string }
+        dogId: { type: string }
+        description: { type: string }
+        mediaUrls: { type: array, items: { type: string } }
+        status: { type: string, enum: [pending, approved, rejected] }
+        vetResponse: { type: string, nullable: true }
+        reviewedAt: { type: string, nullable: true, format: date-time }
+        createdAt: { type: string, format: date-time }
+
+security:
+  - cognitoAuth: []
+
+tags:
+  - name: Owner
+    description: Owner profile management
+  - name: Dogs
+    description: Dog profiles and AI wellness plans
+  - name: Messaging
+    description: Owner-side messaging threads
+  - name: Subscriptions
+    description: Stripe subscription management
+  - name: Providers
+    description: Discover vets and behaviourists
+  - name: Assessments
+    description: Behaviour assessments (owner-side)
+  - name: Bookings
+    description: Video consultation bookings (owner-side)
+  - name: Vet Profile
+    description: Vet account management
+  - name: Vet Assessments
+    description: Assessment queue (vet-side)
+  - name: Vet Availability
+    description: Vet availability management
+  - name: Vet Bookings
+    description: Booking management (vet-side)
+  - name: Vet Messaging
+    description: Thread management (vet-side)
+  - name: Vet Dashboard
+    description: Dashboard and notifications (vet-side)
+
+paths:
+
+  # ─── Phase 1: Owner ───────────────────────────────────────────────────────
+
+  /owners/me:
+    get:
+      tags: [Owner]
+      summary: Get owner profile
+      responses:
+        '200':
+          description: Owner profile with subscription
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OwnerProfile' }
+        '401':
+          description: Unauthorized
+    put:
+      tags: [Owner]
+      summary: Update owner profile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName: { type: string }
+                lastName: { type: string }
+                pushToken: { type: string }
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OwnerProfile' }
+
+  # ─── Phase 1: Dogs ────────────────────────────────────────────────────────
+
+  /dogs:
+    post:
+      tags: [Dogs]
+      summary: Create dog profile and trigger AI wellness plan generation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, breed, ageMonths, spayedNeutered]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 50 }
+                breed: { type: string }
+                ageMonths: { type: integer, minimum: 0, maximum: 240 }
+                dateOfBirth: { type: string, format: date }
+                adoptedFromShelter: { type: boolean }
+                spayedNeutered: { type: string, enum: [yes, no, not_yet] }
+                medicalConditions: { type: string }
+                additionalNotes: { type: string }
+                environment: { type: string }
+      responses:
+        '201':
+          description: Dog created, plan generation started
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Dog' }
+        '400':
+          description: Validation error
+    get:
+      tags: [Dogs]
+      summary: List all dogs for authenticated owner
+      responses:
+        '200':
+          description: List of dogs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dogs:
+                    type: array
+                    items: { $ref: '#/components/schemas/Dog' }
+
+  /dogs/{dogId}:
+    parameters:
+      - name: dogId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Dogs]
+      summary: Get dog profile
+      responses:
+        '200':
+          description: Dog profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Dog' }
+        '403': { description: Not this owner's dog }
+        '404': { description: Dog not found }
+    put:
+      tags: [Dogs]
+      summary: Update dog profile
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                breed: { type: string }
+                ageMonths: { type: integer }
+                photoUrl: { type: string }
+                spayedNeutered: { type: string, enum: [yes, no, not_yet] }
+                medicalConditions: { type: string }
+                environment: { type: string }
+      responses:
+        '200':
+          description: Updated dog
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Dog' }
+
+  /dogs/{dogId}/photo:
+    post:
+      tags: [Dogs]
+      summary: Get presigned S3 URL for dog photo upload
+      parameters:
+        - name: dogId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contentType]
+              properties:
+                contentType: { type: string, enum: [image/jpeg, image/png] }
+      responses:
+        '200':
+          description: Presigned upload URL (valid 300s). PUT image bytes directly to uploadUrl, then save photoUrl via PUT /dogs/{dogId}.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadUrl: { type: string }
+                  photoUrl: { type: string }
+                  expiresIn: { type: integer }
+
+  /dogs/{dogId}/plan:
+    get:
+      tags: [Dogs]
+      summary: Get current month's AI wellness plan
+      parameters:
+        - name: dogId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Wellness plan (or generating status)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/WellnessPlan'
+                  - type: object
+                    properties:
+                      dogId: { type: string }
+                      month: { type: string }
+                      planStatus: { type: string, enum: [generating] }
+
+  # ─── Phase 2: Home & Wellness ─────────────────────────────────────────────
+
+  /home:
+    get:
+      tags: [Dogs]
+      summary: Personalised home feed — today's plan tasks and upcoming items
+      responses:
+        '200':
+          description: Home feed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dogs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        dogId: { type: string }
+                        name: { type: string }
+                        wellnessScore: { type: integer, nullable: true }
+                        todaysTasks: { type: array, items: { type: object } }
+
+  /dogs/{dogId}/activities:
+    post:
+      tags: [Dogs]
+      summary: Log an activity for a dog
+      parameters:
+        - name: dogId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, notes]
+              properties:
+                type: { type: string }
+                notes: { type: string }
+                durationMinutes: { type: integer }
+      responses:
+        '201':
+          description: Activity logged
+    get:
+      tags: [Dogs]
+      summary: List logged activities for a dog
+      parameters:
+        - name: dogId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Activity list
+
+  /dogs/{dogId}/journey:
+    get:
+      tags: [Dogs]
+      summary: Dog journey timeline — milestones and health records
+      parameters:
+        - name: dogId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Journey timeline
+
+  # ─── Phase 3: Messaging (Owner-side) ─────────────────────────────────────
+
+  /threads:
+    post:
+      tags: [Messaging]
+      summary: Open a new ask-a-vet thread
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vetId, dogId, body]
+              properties:
+                vetId: { type: string }
+                dogId: { type: string }
+                body: { type: string, minLength: 1, maxLength: 2000 }
+      responses:
+        '201':
+          description: Thread created with first message
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Thread' }
+    get:
+      tags: [Messaging]
+      summary: List owner's threads
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, closed] }
+      responses:
+        '200':
+          description: Thread list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threads:
+                    type: array
+                    items: { $ref: '#/components/schemas/Thread' }
+
+  /threads/{threadId}:
+    get:
+      tags: [Messaging]
+      summary: Get thread detail and all messages
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Thread with messages
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Thread'
+                  - type: object
+                    properties:
+                      messages:
+                        type: array
+                        items: { $ref: '#/components/schemas/Message' }
+
+  /threads/{threadId}/messages:
+    post:
+      tags: [Messaging]
+      summary: Send a message in a thread
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 2000 }
+      responses:
+        '201':
+          description: Message sent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+
+  /threads/{threadId}/read:
+    put:
+      tags: [Messaging]
+      summary: Mark vet messages in thread as read
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Messages marked read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threadId: { type: string }
+                  markedRead: { type: integer }
+
+  # ─── Phase 4: Subscriptions ───────────────────────────────────────────────
+
+  /subscriptions/plans:
+    get:
+      tags: [Subscriptions]
+      summary: List available subscription plans
+      security: []
+      responses:
+        '200':
+          description: Plan list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items: { $ref: '#/components/schemas/SubscriptionPlan' }
+
+  /subscriptions/customer:
+    post:
+      tags: [Subscriptions]
+      summary: Create Stripe customer for the authenticated owner
+      responses:
+        '201':
+          description: Stripe customer created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stripeCustomerId: { type: string }
+
+  /subscriptions:
+    post:
+      tags: [Subscriptions]
+      summary: Subscribe to a plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan, paymentMethodId]
+              properties:
+                plan: { type: string, enum: [protector, proactive] }
+                paymentMethodId: { type: string, description: Stripe paymentMethodId }
+      responses:
+        '201':
+          description: Subscription activated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan: { type: string }
+                  creditBalance: { type: integer }
+                  status: { type: string }
+    delete:
+      tags: [Subscriptions]
+      summary: Cancel current subscription
+      responses:
+        '200':
+          description: Subscription cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan: { type: string }
+                  status: { type: string }
+
+  /subscriptions/credits/topup:
+    post:
+      tags: [Subscriptions]
+      summary: Purchase additional credits
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [credits]
+              properties:
+                credits: { type: integer }
+      responses:
+        '200':
+          description: Credits added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  creditBalance: { type: integer }
+
+  /webhooks/stripe:
+    post:
+      tags: [Subscriptions]
+      summary: Stripe webhook handler (internal — not called by mobile client)
+      security: []
+      responses:
+        '200': { description: OK }
+
+  # ─── Phase 4: Providers ───────────────────────────────────────────────────
+
+  /providers:
+    get:
+      tags: [Providers]
+      summary: Discover vets and behaviourists
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string, enum: [vet, behaviourist] }
+        - name: nextToken
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Provider list with assessment status for authenticated owner
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items: { $ref: '#/components/schemas/Provider' }
+                  nextToken: { type: string, nullable: true }
+
+  /providers/{vetId}:
+    get:
+      tags: [Providers]
+      summary: Get provider profile with next available slot
+      parameters:
+        - name: vetId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Provider detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Provider' }
+        '404': { description: Provider not found }
+
+  /providers/{vetId}/availability:
+    get:
+      tags: [Providers]
+      summary: Get provider availability by date range (max 14 days)
+      parameters:
+        - name: vetId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: startDate
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: endDate
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Availability per date
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      time: { type: string, example: "09:00" }
+                      available: { type: boolean }
+        '400': { description: Date range exceeds 14 days }
+
+  /providers/{vetId}/assessment:
+    get:
+      tags: [Providers]
+      summary: Get owner's assessment with this provider
+      parameters:
+        - name: vetId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Assessment record
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assessment' }
+        '404': { description: No assessment exists }
+
+  # ─── Phase 4: Assessments ────────────────────────────────────────────────
+
+  /assessments:
+    post:
+      tags: [Assessments]
+      summary: Submit a behaviour assessment request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vetId, dogId, description]
+              properties:
+                vetId: { type: string }
+                dogId: { type: string }
+                description: { type: string, minLength: 50 }
+                mediaUrls:
+                  type: array
+                  maxItems: 3
+                  items: { type: string }
+      responses:
+        '201':
+          description: Assessment submitted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assessment' }
+        '409':
+          description: Assessment already exists for this owner+vet
+
+  /assessments/{assessmentId}:
+    get:
+      tags: [Assessments]
+      summary: Get assessment status and vet response
+      parameters:
+        - name: assessmentId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Assessment detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assessment' }
+
+  # ─── Phase 4: Bookings (Owner-side) ──────────────────────────────────────
+
+  /bookings:
+    post:
+      tags: [Bookings]
+      summary: Book a video consultation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vetId, dogId, duration, scheduledAt]
+              properties:
+                vetId: { type: string }
+                dogId: { type: string }
+                assessmentId: { type: string, description: Required for behaviourists }
+                duration: { type: integer, enum: [15, 30] }
+                scheduledAt: { type: string, format: date-time }
+      responses:
+        '201':
+          description: Booking confirmed, credits deducted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+        '402': { description: Insufficient credits }
+        '403': { description: Plan upgrade required }
+        '409': { description: Slot already taken }
+    get:
+      tags: [Bookings]
+      summary: List owner's bookings
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [upcoming, past] }
+      responses:
+        '200':
+          description: Booking list with vet + dog info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bookings:
+                    type: array
+                    items: { $ref: '#/components/schemas/Booking' }
+
+  /bookings/{bookingId}:
+    get:
+      tags: [Bookings]
+      summary: Get booking detail
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Booking detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+    delete:
+      tags: [Bookings]
+      summary: Cancel booking. Full credit refund if > 24h before scheduled time.
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Booking cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bookingId: { type: string }
+                  status: { type: string }
+                  creditsRefunded: { type: integer }
+                  creditBalance: { type: integer }
+
+  /bookings/{bookingId}/token:
+    get:
+      tags: [Bookings]
+      summary: Get Agora RTC token for video call. Available ±30 min of scheduled time.
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Agora token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  channelId: { type: string }
+                  uid: { type: integer }
+                  appId: { type: string }
+                  expiresAt: { type: string, format: date-time }
+        '400': { description: Booking not upcoming }
+        '403': { description: Too early (> 30 min before start) }
+
+  # ─── Phase 5: Vet Profile ─────────────────────────────────────────────────
+
+  /vet/me:
+    get:
+      tags: [Vet Profile]
+      summary: Get vet profile
+      responses:
+        '200':
+          description: Vet profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VetProfile' }
+        '404': { description: Vet profile not found }
+    put:
+      tags: [Vet Profile]
+      summary: Update vet profile (bio, specialisation, isActive)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bio: { type: string }
+                specialisation: { type: string }
+                isActive: { type: boolean }
+      responses:
+        '200':
+          description: Updated vet profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VetProfile' }
+
+  /vet/me/photo:
+    post:
+      tags: [Vet Profile]
+      summary: Get presigned S3 URL for vet profile photo upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contentType]
+              properties:
+                contentType: { type: string, enum: [image/jpeg, image/png] }
+      responses:
+        '200':
+          description: Presigned upload URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadUrl: { type: string }
+                  photoUrl: { type: string }
+                  expiresIn: { type: integer }
+
+  # ─── Phase 5: Vet Assessments ─────────────────────────────────────────────
+
+  /vet/assessments:
+    get:
+      tags: [Vet Assessments]
+      summary: List assessment queue
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, approved, rejected], default: pending }
+      responses:
+        '200':
+          description: Assessment list with owner + dog context
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assessments:
+                    type: array
+                    items: { $ref: '#/components/schemas/Assessment' }
+
+  /vet/assessments/{assessmentId}:
+    get:
+      tags: [Vet Assessments]
+      summary: Get assessment detail
+      parameters:
+        - name: assessmentId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Assessment with owner + dog context
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assessment' }
+
+  /vet/assessments/{assessmentId}/respond:
+    put:
+      tags: [Vet Assessments]
+      summary: Approve or reject assessment
+      parameters:
+        - name: assessmentId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, response]
+              properties:
+                decision: { type: string, enum: [approved, rejected] }
+                response: { type: string, minLength: 50 }
+      responses:
+        '200':
+          description: Assessment updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assessmentId: { type: string }
+                  status: { type: string }
+                  response: { type: string }
+                  reviewedAt: { type: string, format: date-time }
+        '400': { description: Already responded }
+
+  # ─── Phase 5: Vet Availability ────────────────────────────────────────────
+
+  /vet/availability:
+    get:
+      tags: [Vet Availability]
+      summary: Get vet's own availability by date range (max 30 days)
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: endDate
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Availability per date
+    put:
+      tags: [Vet Availability]
+      summary: Bulk set availability for multiple dates (max 30 dates per request)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dates]
+              properties:
+                dates:
+                  type: array
+                  maxItems: 30
+                  items:
+                    type: object
+                    required: [date, slots]
+                    properties:
+                      date: { type: string, format: date }
+                      slots:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            time: { type: string, example: "09:00" }
+                            available: { type: boolean }
+      responses:
+        '200':
+          description: Bulk update result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated: { type: integer }
+                  skipped: { type: integer }
+
+  /vet/availability/{date}:
+    put:
+      tags: [Vet Availability]
+      summary: Set availability slots for a specific date
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slots]
+              properties:
+                slots:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      time: { type: string, example: "09:30" }
+                      available: { type: boolean }
+      responses:
+        '200':
+          description: Availability set
+        '409': { description: Slot already booked }
+
+  # ─── Phase 5: Vet Bookings ────────────────────────────────────────────────
+
+  /vet/bookings:
+    get:
+      tags: [Vet Bookings]
+      summary: List vet's bookings
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [upcoming, past] }
+      responses:
+        '200':
+          description: Booking list with owner + dog context
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bookings:
+                    type: array
+                    items: { $ref: '#/components/schemas/Booking' }
+
+  /vet/bookings/{bookingId}:
+    get:
+      tags: [Vet Bookings]
+      summary: Get booking detail with full owner and dog context
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Booking with owner + dog + assessment context
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Booking' }
+
+  /vet/bookings/{bookingId}/token:
+    get:
+      tags: [Vet Bookings]
+      summary: Get Agora RTC token for video call
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Agora token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  channelId: { type: string }
+                  uid: { type: integer }
+                  appId: { type: string }
+                  expiresAt: { type: string, format: date-time }
+
+  /vet/bookings/{bookingId}/summary:
+    post:
+      tags: [Vet Bookings]
+      summary: Submit post-call summary after consultation
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [summary]
+              properties:
+                summary: { type: string, minLength: 100 }
+                actionPlan:
+                  type: array
+                  maxItems: 10
+                  items: { type: string }
+      responses:
+        '200':
+          description: Summary saved, booking marked completed, follow-up thread created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bookingId: { type: string }
+                  status: { type: string }
+                  followUpThreadId: { type: string }
+                  submittedAt: { type: string, format: date-time }
+
+  # ─── Phase 5: Vet Messaging ───────────────────────────────────────────────
+
+  /vet/threads:
+    get:
+      tags: [Vet Messaging]
+      summary: List vet's threads
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, closed], default: open }
+      responses:
+        '200':
+          description: Thread list with owner + dog context, isPriority flag
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threads:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Thread'
+                        - type: object
+                          properties:
+                            owner:
+                              type: object
+                              properties:
+                                firstName: { type: string }
+                                lastName: { type: string }
+                                subscription:
+                                  type: object
+                                  properties:
+                                    plan: { type: string }
+                            dog:
+                              type: object
+                              properties:
+                                name: { type: string }
+                                breed: { type: string }
+                            lastMessage: { $ref: '#/components/schemas/Message', nullable: true }
+                            isPriority: { type: boolean, description: "true if owner is on protector or proactive plan" }
+
+  /vet/threads/{threadId}:
+    get:
+      tags: [Vet Messaging]
+      summary: Get thread detail with all messages
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Thread with messages, owner + dog context
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Thread'
+                  - type: object
+                    properties:
+                      messages:
+                        type: array
+                        items: { $ref: '#/components/schemas/Message' }
+
+  /vet/threads/{threadId}/messages:
+    post:
+      tags: [Vet Messaging]
+      summary: Send a message in a thread
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 2000 }
+      responses:
+        '201':
+          description: Message sent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { description: Thread is closed }
+
+  /vet/threads/{threadId}/close:
+    put:
+      tags: [Vet Messaging]
+      summary: Close a thread
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Thread closed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threadId: { type: string }
+                  status: { type: string }
+                  closedAt: { type: string, format: date-time }
+        '400': { description: Thread already closed }
+
+  /vet/threads/{threadId}/read:
+    put:
+      tags: [Vet Messaging]
+      summary: Mark all owner messages in thread as read
+      parameters:
+        - name: threadId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Messages marked read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threadId: { type: string }
+                  markedRead: { type: integer }
+
+  # ─── Phase 5: Vet Dashboard ───────────────────────────────────────────────
+
+  /vet/dashboard:
+    get:
+      tags: [Vet Dashboard]
+      summary: Get counts of pending items
+      responses:
+        '200':
+          description: Dashboard counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pendingAssessments: { type: integer }
+                  upcomingBookings: { type: integer }
+                  openThreads: { type: integer }
+
+  /vet/notifications:
+    get:
+      tags: [Vet Dashboard]
+      summary: List in-app notifications (newest first)
+      responses:
+        '200':
+          description: Notification list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        notifId: { type: string }
+                        type: { type: string, example: new_assessment }
+                        payload: { type: object, nullable: true }
+                        readAt: { type: string, nullable: true, format: date-time }
+                        createdAt: { type: string, format: date-time }
+
+  /vet/notifications/{notifId}/read:
+    put:
+      tags: [Vet Dashboard]
+      summary: Mark a notification as read
+      parameters:
+        - name: notifId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Notification marked read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifId: { type: string }
+                  readAt: { type: string, format: date-time }
+        '404': { description: Notification not found }

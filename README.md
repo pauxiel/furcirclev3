@@ -1,301 +1,182 @@
-# FurCircle Backend — Phase 1
+# FurCircle Backend
 
-AI-powered dog wellness plans. Serverless backend built with AWS Lambda, DynamoDB, Step Functions, and Claude.
+AI-powered monthly wellness plans for dog owners. Serverless backend on AWS.
 
-**Stack:** TypeScript · Serverless Framework v4 · AWS Lambda · DynamoDB (single-table) · Cognito · Step Functions · Claude API (claude-opus-4-6) · S3
+**Stack:** TypeScript · Serverless Framework v4 · AWS Lambda · DynamoDB (single-table) · Cognito · Step Functions · Claude API · S3 · Stripe · Agora
 
----
-
-## Architecture
-
-![Phase 1 Architecture](docs/architecture-phase1.png)
-
-> Full diagram: `docs/architecture-phase1.excalidraw` (open in [excalidraw.com](https://excalidraw.com))
-
-**Request flow:**
-1. Mobile app authenticates with Cognito → receives `idToken`
-2. All API calls hit HTTP API Gateway with `Authorization: Bearer {idToken}`
-3. Cognito JWT Authorizer validates token, injects `sub` (userId) into Lambda context
-4. Lambda reads/writes DynamoDB single-table
-
-**Async plan generation (triggered by `POST /dogs`):**
-1. `createDog` Lambda writes dog record + starts Step Functions execution (non-blocking)
-2. Step Functions runs: `validateInput` → `callClaude` → `savePlan` → `notifyUser`
-3. Mobile polls `GET /dogs/{dogId}` until `planStatus=ready`, or waits for push notification
-
-**Signup flow (no HTTP call needed):**
-- User signs up via Cognito (email + OTP)
-- Cognito fires `postConfirmation` Lambda trigger
-- Lambda creates `OWNER` + `SUBSCRIPTION` records in DynamoDB, adds user to `owners` group
+**Base URL:** `https://057mg3hls1.execute-api.us-east-1.amazonaws.com`
 
 ---
 
-## API Reference
+## Table of Contents
 
-**Base URL:** `https://{apiId}.execute-api.us-east-1.amazonaws.com/dev`
-
-All endpoints require: `Authorization: Bearer {idToken}`
-
-All responses: `Content-Type: application/json`
-
----
-
-### Owner Endpoints
-
-#### `GET /owners/me`
-Returns the authenticated owner's profile and subscription.
-
-**Response 200:**
-```json
-{
-  "userId": "cognito-uuid",
-  "firstName": "Joshua",
-  "lastName": "Smith",
-  "email": "joshua@example.com",
-  "pushToken": null,
-  "referralCode": "FUR4X2",
-  "subscription": {
-    "plan": "welcome",
-    "creditBalance": 0,
-    "status": "active",
-    "currentPeriodEnd": null
-  },
-  "createdAt": "2026-04-15T10:00:00Z"
-}
-```
+- [Phase 1 — Auth & Onboarding](#phase-1--auth--onboarding)
+- [Phase 2 — Home & Wellness](#phase-2--home--wellness)
+- [Phase 3 — Messaging](#phase-3--messaging)
+- [Phase 4 — Bookings & Subscriptions](#phase-4--bookings--subscriptions)
+- [Phase 5 — Vet API](#phase-5--vet-api)
+- [Database Design](#database-design)
+- [Development](#development)
+- [Deploy](#deploy)
 
 ---
 
-#### `PUT /owners/me`
-Update owner profile. All fields optional.
+## Phase 1 — Auth & Onboarding
 
-**Request body:**
-```json
-{
-  "firstName": "Josh",
-  "lastName": "Smith",
-  "pushToken": "ExponentPushToken[xxxx]"
-}
-```
+Owner signup, dog profiles, AI wellness plan generation.
 
-**Response 200:** Updated owner object.
+| Resource | Link |
+|----------|------|
+| Architecture diagram | [`docs/architecture-phase1.excalidraw`](docs/architecture-phase1.excalidraw) — open at [excalidraw.com](https://excalidraw.com) |
+| Full spec | [`docs/spec-phase1-auth-onboarding.md`](docs/spec-phase1-auth-onboarding.md) |
 
----
-
-### Dog Endpoints
-
-#### `POST /dogs`
-Create a dog profile and trigger async AI plan generation.
-
-**Request body:**
-```json
-{
-  "name": "Buddy",
-  "breed": "Golden Retriever",
-  "ageMonths": 3,
-  "adoptedFromShelter": false,
-  "spayedNeutered": "not_yet",
-  "medicalConditions": "None known",
-  "additionalNotes": "On puppy food, no allergies",
-  "environment": "Apartment, no other pets"
-}
-```
-
-**Validation:**
-- `name`: required, 1–50 chars
-- `breed`: required
-- `ageMonths`: required, 0–240
-- `spayedNeutered`: required — `"yes"` | `"no"` | `"not_yet"`
-
-**Response 201:**
-```json
-{
-  "dogId": "uuid",
-  "name": "Buddy",
-  "breed": "Golden Retriever",
-  "ageMonths": 3,
-  "planStatus": "generating",
-  "createdAt": "2026-04-15T10:00:00Z"
-}
-```
-
-> Poll `GET /dogs/{dogId}` until `planStatus=ready`, or listen for push notification.
+**Endpoints:**
+- `POST /dogs` — create dog + trigger async AI plan generation
+- `GET /dogs` — list owner's dogs
+- `GET/PUT /dogs/{dogId}` — get or update dog profile
+- `POST /dogs/{dogId}/photo` — presigned S3 upload URL
+- `GET /dogs/{dogId}/plan` — AI-generated monthly wellness plan
+- `GET/PUT /owners/me` — owner profile
 
 ---
 
-#### `GET /dogs`
-List all dogs for the authenticated owner.
+## Phase 2 — Home & Wellness
 
-**Response 200:**
-```json
-{
-  "dogs": [
-    {
-      "dogId": "uuid",
-      "name": "Buddy",
-      "breed": "Golden Retriever",
-      "ageMonths": 3,
-      "photoUrl": "https://...",
-      "wellnessScore": 72,
-      "planStatus": "ready"
-    }
-  ]
-}
-```
+Home feed, activity logging, dog journey timeline.
+
+| Resource | Link |
+|----------|------|
+| Full spec | [`docs/spec-phase2-home-wellness.md`](docs/spec-phase2-home-wellness.md) |
+
+**Endpoints:**
+- `GET /home` — personalised home feed (today's plan, upcoming tasks)
+- `GET /dogs/{dogId}/journey` — milestone + health record timeline
+- `POST /dogs/{dogId}/activities` — log an activity
+- `GET /dogs/{dogId}/activities` — list logged activities
 
 ---
 
-#### `GET /dogs/{dogId}`
-Get full dog profile. Returns `403` if dog belongs to a different owner.
+## Phase 3 — Messaging
 
-**Response 200:**
-```json
-{
-  "dogId": "uuid",
-  "ownerId": "cognito-uuid",
-  "name": "Buddy",
-  "breed": "Golden Retriever",
-  "ageMonths": 3,
-  "dateOfBirth": "2026-01-15",
-  "photoUrl": "https://...",
-  "adoptedFromShelter": false,
-  "spayedNeutered": "not_yet",
-  "medicalConditions": "None known",
-  "environment": "Apartment, no other pets",
-  "wellnessScore": 72,
-  "planStatus": "ready",
-  "healthRecords": [],
-  "createdAt": "2026-04-15T10:00:00Z"
-}
-```
+Owner ↔ vet ask-a-vet threads.
+
+| Resource | Link |
+|----------|------|
+| Full spec | [`docs/spec-phase3-messaging.md`](docs/spec-phase3-messaging.md) |
+
+**Endpoints:**
+- `POST /threads` — open a new thread with a vet
+- `GET /threads` — list owner's threads
+- `GET /threads/{threadId}` — thread detail + messages
+- `POST /threads/{threadId}/messages` — send a message
+- `PUT /threads/{threadId}/read` — mark messages as read
 
 ---
 
-#### `PUT /dogs/{dogId}`
-Update dog profile. All fields optional. Returns `403` if not owner.
+## Phase 4 — Bookings & Subscriptions
 
-**Request body:** same shape as `POST /dogs` (all fields optional).
+Stripe subscriptions, provider discovery, video consultation bookings.
 
-**Response 200:** Updated dog object.
+| Resource | Link |
+|----------|------|
+| Full spec | [`docs/spec-phase4-booking.md`](docs/spec-phase4-booking.md) |
 
----
-
-#### `POST /dogs/{dogId}/photo`
-Get a presigned S3 URL to upload a dog photo directly from the mobile client.
-
-**Request body:**
-```json
-{ "contentType": "image/jpeg" }
-```
-Accepts: `image/jpeg` or `image/png`
-
-**Response 200:**
-```json
-{
-  "uploadUrl": "https://...s3.amazonaws.com/dogs/uuid/profile.jpg?X-Amz-Signature=...",
-  "photoUrl": "https://...s3.amazonaws.com/dogs/uuid/profile.jpg",
-  "expiresIn": 300
-}
-```
-
-**Mobile flow:**
-1. `POST /dogs/{dogId}/photo` → get `uploadUrl`
-2. `PUT {uploadUrl}` with raw image bytes + `Content-Type: image/jpeg`
-3. `PUT /dogs/{dogId}` with `{ "photoUrl": "..." }` to persist the URL
+**Endpoints:**
+- `GET /subscriptions/plans` — list available plans (public)
+- `POST /subscriptions/customer` — create Stripe customer
+- `POST /subscriptions` — subscribe to a plan
+- `DELETE /subscriptions` — cancel subscription
+- `POST /subscriptions/credits/topup` — purchase extra credits
+- `POST /webhooks/stripe` — Stripe webhook handler
+- `GET /providers` — discover vets/behaviourists
+- `GET /providers/{vetId}` — vet profile + next availability
+- `GET /providers/{vetId}/availability` — vet availability by date range
+- `GET /providers/{vetId}/assessment` — owner's assessment with this vet
+- `POST /assessments` — submit behaviour assessment
+- `GET /assessments/{assessmentId}` — get assessment status
+- `POST /bookings` — book a consultation
+- `GET /bookings` — list owner's bookings
+- `GET /bookings/{bookingId}` — booking detail
+- `DELETE /bookings/{bookingId}` — cancel booking
+- `GET /bookings/{bookingId}/token` — Agora RTC token for video call
 
 ---
 
-#### `GET /dogs/{dogId}/plan`
-Get the current month's AI-generated wellness plan.
+## Phase 5 — Vet API
 
-**Response 200 (ready):**
-```json
-{
-  "dogId": "uuid",
-  "month": "2026-04",
-  "ageMonthsAtPlan": 3,
-  "whatToExpect": "Your Golden Retriever is at peak learning capacity...",
-  "whatToDo": [
-    { "text": "Teach sit, come, down and stay. Five-minute sessions three times daily." }
-  ],
-  "whatNotToDo": [
-    { "text": "Don't take to off-leash dog parks — not fully vaccinated." }
-  ],
-  "watchFor": [
-    { "text": "Excessive hiding when meeting new people." }
-  ],
-  "earlyWarningSigns": [
-    { "text": "Persistent limping", "action": "See a vet immediately." }
-  ],
-  "comingUpNextMonth": "Month 4 focuses on adolescence boundaries.",
-  "milestones": [
-    { "emoji": "🐾", "title": "Socialisation window closing", "description": "..." }
-  ],
-  "wellnessScore": 72,
-  "generatedAt": "2026-04-15T10:30:00Z"
-}
-```
+Vet-side dashboard, assessment queue, availability, booking management, messaging.
 
-**Response 200 (still generating):**
-```json
-{ "dogId": "uuid", "month": "2026-04", "planStatus": "generating" }
-```
+| Resource | Link |
+|----------|------|
+| Full spec | [`docs/spec-phase5-vet-api.md`](docs/spec-phase5-vet-api.md) |
+
+**Endpoints:**
+- `GET/PUT /vet/me` — vet profile
+- `POST /vet/me/photo` — presigned S3 upload URL
+- `GET /vet/assessments` — pending assessment queue
+- `GET /vet/assessments/{assessmentId}` — assessment detail
+- `PUT /vet/assessments/{assessmentId}/respond` — approve or reject assessment
+- `GET /vet/availability` — get availability by date range
+- `PUT /vet/availability/{date}` — set slots for a specific date
+- `PUT /vet/availability` — bulk set slots for multiple dates
+- `GET /vet/bookings` — list upcoming/past bookings
+- `GET /vet/bookings/{bookingId}` — booking detail with owner + dog context
+- `GET /vet/bookings/{bookingId}/token` — Agora RTC token for video call
+- `POST /vet/bookings/{bookingId}/summary` — submit post-call summary
+- `GET /vet/threads` — list threads
+- `GET /vet/threads/{threadId}` — thread detail + messages
+- `POST /vet/threads/{threadId}/messages` — send a message
+- `PUT /vet/threads/{threadId}/close` — close thread
+- `PUT /vet/threads/{threadId}/read` — mark owner messages as read
+- `GET /vet/dashboard` — counts of pending items
+- `GET /vet/notifications` — in-app notifications
+- `PUT /vet/notifications/{notifId}/read` — mark notification as read
 
 ---
 
-### Error Responses
+## Database Design
 
-All errors follow this shape:
-```json
-{ "error": "DOG_NOT_FOUND", "message": "No dog found with id abc123" }
-```
+Single-table DynamoDB design covering all phases.
 
-| Status | Error code | When |
-|--------|------------|------|
-| 400 | `VALIDATION_ERROR` | Invalid request body |
-| 401 | `UNAUTHORIZED` | Missing or invalid token |
-| 403 | `FORBIDDEN` | Dog belongs to different owner |
-| 404 | `DOG_NOT_FOUND` | Dog does not exist |
-| 500 | `INTERNAL_ERROR` | Unexpected server error |
+→ [`docs/dynamodb-table-design.md`](docs/dynamodb-table-design.md)
 
 ---
 
-## Local Development
+## Development
 
 ```bash
-# Install dependencies
 npm install
 
-# Load deployed stack outputs into .env.test
-npm run env:load
-
-# Run unit tests (no AWS needed)
+# Unit tests (no AWS needed)
 npm test
 
-# Run integration tests (requires deployed dev stack)
+# Integration tests (requires deployed dev stack)
 npm run test:integration
 ```
+
+---
 
 ## Deploy
 
 ```bash
-# Deploy to dev
+# Deploy all functions to dev
 npx serverless deploy --stage dev
 
-# Deploy to prod
-npx serverless deploy --stage prod
+# Deploy a single function (faster iteration)
+npx serverless deploy function -f createDog --stage dev
+
+# View logs
+npx serverless logs -f createDog --stage dev --tail
 ```
 
-CI/CD: GitHub Actions deploys to `dev` automatically on merge to `main` (OIDC auth, no static keys).
+CI/CD: GitHub Actions deploys to `dev` on merge to `main` (OIDC auth, no static keys).
 
 ---
 
-## Docs
+## API Reference (Swagger)
 
-| File | Contents |
-|------|----------|
-| `docs/spec-phase1-auth-onboarding.md` | Full Phase 1 spec with DynamoDB keys, IAM permissions |
-| `docs/dynamodb-table-design.md` | Single-table design (all phases) |
-| `docs/architecture-phase1.excalidraw` | Architecture diagram (editable) |
-| `tasks/plan.md` | Implementation plan |
-| `tasks/todo.md` | Task checklist |
+Machine-readable OpenAPI 3.0 spec for all endpoints:
+
+→ [`docs/openapi.yaml`](docs/openapi.yaml)
+
+Import into Postman, Insomnia, or view at [editor.swagger.io](https://editor.swagger.io).
