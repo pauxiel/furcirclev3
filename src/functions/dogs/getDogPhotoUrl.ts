@@ -37,7 +37,7 @@ export const handler = async (
 
   const userId = getUserId(event);
   const table = process.env['TABLE_NAME']!;
-  const bucket = process.env['PHOTOS_BUCKET']!;
+  const bucket = process.env['BUCKET_NAME']!;
 
   const { Item: dog } = await docClient.send(
     new GetCommand({ TableName: table, Key: { PK: `DOG#${dogId}`, SK: 'PROFILE' } }),

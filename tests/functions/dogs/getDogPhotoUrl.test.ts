@@ -42,7 +42,7 @@ describe('getDogPhotoUrl handler', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env['TABLE_NAME'] = 'furcircle-test';
-    process.env['PHOTOS_BUCKET'] = 'furcircle-photos-test';
+    process.env['BUCKET_NAME'] = 'furcircle-photos-test';
   });
 
   it('returns 200 with uploadUrl and photoUrl', async () => {

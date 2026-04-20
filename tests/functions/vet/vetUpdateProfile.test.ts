@@ -79,4 +79,27 @@ describe('vetUpdateProfile handler', () => {
     expect(body.isActive).toBe(false);
     expect(body.bio).toBe('Updated bio text.');
   });
+
+  it('updates pushToken and includes it in UpdateExpression', async () => {
+    mockDocClientSend.mockResolvedValueOnce({
+      Attributes: { ...updatedProfile, pushToken: 'ExponentPushToken[vet456]' },
+    });
+
+    const res = (await handler(makeEvent({ pushToken: 'ExponentPushToken[vet456]' }))) as Result;
+    expect(res.statusCode).toBe(200);
+
+    const call = mockDocClientSend.mock.calls[0][0].input;
+    expect(call.UpdateExpression).toContain('pushToken');
+    expect(call.ExpressionAttributeValues[':pushToken']).toBe('ExponentPushToken[vet456]');
+  });
+
+  it('does not write pushToken when not in allowed fields (regression guard)', async () => {
+    mockDocClientSend.mockResolvedValueOnce({ Attributes: updatedProfile });
+
+    await handler(makeEvent({ bio: 'Some bio text here.', injected: 'evil', adminFlag: true }));
+
+    const call = mockDocClientSend.mock.calls[0][0].input;
+    expect(call.UpdateExpression).not.toContain('injected');
+    expect(call.UpdateExpression).not.toContain('adminFlag');
+  });
 });
