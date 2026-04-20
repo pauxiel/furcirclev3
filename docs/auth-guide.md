@@ -183,6 +183,12 @@ export function confirmForgotPassword(
 
 ## Sign Out
 
+Two options depending on what you need:
+
+### Local Sign Out (recommended for normal logout)
+
+Clears the session from the device only. No network call — instant. Refresh token remains valid on other devices.
+
 ```typescript
 import { userPool } from './cognito';
 
@@ -191,6 +197,32 @@ export function signOut(): void {
   user?.signOut();
 }
 ```
+
+### Global Sign Out (security logout — "sign out everywhere")
+
+Revokes the refresh token on the Cognito server. Kicks all devices/sessions. Use for "forgot my phone" or security-sensitive flows. Requires a valid session (user must be signed in on this device).
+
+```typescript
+import { userPool } from './cognito';
+
+export function signOutGlobal(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const user = userPool.getCurrentUser();
+    if (!user) return resolve();
+    user.getSession((err: Error | null) => {
+      if (err) return reject(err);
+      user.globalSignOut({ onSuccess: () => resolve(), onFailure: reject });
+    });
+  });
+}
+```
+
+| | Local | Global |
+|--|-------|--------|
+| Clears this device | ✅ | ✅ |
+| Revokes all other devices | ❌ | ✅ |
+| Needs network call | ❌ | ✅ |
+| Use case | Normal logout button | Security / "sign out everywhere" |
 
 ---
 
