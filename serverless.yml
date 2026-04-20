@@ -1065,6 +1065,109 @@ functions:
           - dynamodb:UpdateItem
         Resource: !GetAtt FurcircleTable.Arn
 
+  adminGetMetrics:
+    handler: src/functions/admin/adminGetMetrics.handler
+    events:
+      - httpApi:
+          path: /admin/metrics
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    environment:
+      USER_POOL_ID: !Ref CognitoUserPool
+    iamRoleStatements:
+      - Effect: Allow
+        Action: [dynamodb:Scan]
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action: [cognito-idp:ListUsersInGroup]
+        Resource: !GetAtt CognitoUserPool.Arn
+
+  adminListUsers:
+    handler: src/functions/admin/adminListUsers.handler
+    events:
+      - httpApi:
+          path: /admin/users
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action: [dynamodb:Scan]
+        Resource: !GetAtt FurcircleTable.Arn
+
+  adminGetUser:
+    handler: src/functions/admin/adminGetUser.handler
+    events:
+      - httpApi:
+          path: /admin/users/{userId}
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action: [dynamodb:BatchGetItem, dynamodb:Query]
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub "${FurcircleTable.Arn}/index/*"
+
+  adminListVets:
+    handler: src/functions/admin/adminListVets.handler
+    events:
+      - httpApi:
+          path: /admin/vets
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action: [dynamodb:Scan]
+        Resource: !GetAtt FurcircleTable.Arn
+
+  adminDeactivateVet:
+    handler: src/functions/admin/adminDeactivateVet.handler
+    events:
+      - httpApi:
+          path: /admin/vets/{vetId}/deactivate
+          method: PUT
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action: [dynamodb:GetItem, dynamodb:UpdateItem]
+        Resource: !GetAtt FurcircleTable.Arn
+
+  adminListBookings:
+    handler: src/functions/admin/adminListBookings.handler
+    events:
+      - httpApi:
+          path: /admin/bookings
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action: [dynamodb:Scan]
+        Resource: !GetAtt FurcircleTable.Arn
+
+  adminTriggerPlanRefresh:
+    handler: src/functions/admin/adminTriggerPlanRefresh.handler
+    events:
+      - httpApi:
+          path: /admin/dogs/{dogId}/plan-refresh
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    environment:
+      STATE_MACHINE_ARN: !Ref GeneratePlanStateMachine
+    iamRoleStatements:
+      - Effect: Allow
+        Action: [dynamodb:GetItem, dynamodb:UpdateItem]
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action: [states:StartExecution]
+        Resource: !Ref GeneratePlanStateMachine
+
 build:
   esbuild:
     bundle: true
