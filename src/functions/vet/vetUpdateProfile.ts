@@ -4,7 +4,7 @@ import { docClient } from '../../lib/dynamodb';
 import { success, error } from '../../lib/response';
 import { getUserId } from '../../lib/auth';
 
-const ALLOWED_FIELDS = ['bio', 'specialisation', 'isActive'] as const;
+const ALLOWED_FIELDS = ['bio', 'specialisation', 'isActive', 'pushToken'] as const;
 type AllowedField = (typeof ALLOWED_FIELDS)[number];
 
 export const handler = async (
