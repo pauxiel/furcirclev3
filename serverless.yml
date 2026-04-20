@@ -1168,6 +1168,17 @@ functions:
         Action: [states:StartExecution]
         Resource: !Ref GeneratePlanStateMachine
 
+  sendPushNotification:
+    handler: src/functions/notifications/sendPushNotification.handler
+    events:
+      - sns: !Ref NotificationsTopic
+    environment:
+      TABLE_NAME: !Ref FurcircleTable
+    iamRoleStatements:
+      - Effect: Allow
+        Action: [dynamodb:GetItem]
+        Resource: !GetAtt FurcircleTable.Arn
+
 build:
   esbuild:
     bundle: true
