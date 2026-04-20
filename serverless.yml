@@ -1171,7 +1171,9 @@ functions:
   sendPushNotification:
     handler: src/functions/notifications/sendPushNotification.handler
     events:
-      - sns: !Ref NotificationsTopic
+      - sns:
+          arn: !Ref NotificationsTopic
+          topicName: furcircle-notifications-${self:provider.stage}
     environment:
       TABLE_NAME: !Ref FurcircleTable
     iamRoleStatements:
