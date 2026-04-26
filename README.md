@@ -47,7 +47,7 @@ Owner signup, dog profiles, AI wellness plan generation.
 
 | Resource | Link |
 |----------|------|
-| Architecture diagram | [`docs/architecture-phase1.excalidraw`](docs/architecture-phase1.excalidraw) — open at [excalidraw.com](https://excalidraw.com) |
+| Architecture diagram | [`docs/architecture-phase1.png`](docs/architecture-phase1.png) |
 | Full spec | [`docs/spec-phase1-auth-onboarding.md`](docs/spec-phase1-auth-onboarding.md) |
 
 **Endpoints:**
@@ -174,6 +174,8 @@ Platform management. All endpoints require `admins` Cognito group membership —
 Single-table DynamoDB design covering all phases.
 
 → [`docs/dynamodb-table-design.md`](docs/dynamodb-table-design.md)
+
+→ [`docs/architecture-dynamodb.png`](docs/architecture-dynamodb.png) — entity map, partition groups, GSIs, and key design decisions (why status lives in SK, why messages share the Thread partition, why rating is embedded in GSI3SK, etc.)
 
 ---
 
