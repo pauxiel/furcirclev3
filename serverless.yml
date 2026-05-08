@@ -90,6 +90,13 @@ functions:
         # Use Sub with name to avoid circular dep with GeneratePlanStateMachine resource
         Resource: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:furcircle-generate-plan-${self:provider.stage}
 
+  getBreeds:
+    handler: src/functions/dogs/getBreeds.handler
+    events:
+      - httpApi:
+          path: /breeds
+          method: GET
+
   listDogs:
     handler: src/functions/dogs/listDogs.handler
     events:
