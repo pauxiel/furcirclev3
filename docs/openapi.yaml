@@ -279,6 +279,26 @@ paths:
 
   # ─── Phase 1: Dogs ────────────────────────────────────────────────────────
 
+  /breeds:
+    get:
+      tags: [Dogs]
+      summary: List all supported dog breeds
+      description: Returns the full list of supported dog breed names sorted alphabetically. No authentication required. Use this to populate the breed dropdown on the Add Dog form.
+      security: []
+      responses:
+        '200':
+          description: List of breed names
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  breeds:
+                    type: array
+                    items:
+                      type: string
+                    example: ["Afghan Hound", "Beagle", "Golden Retriever", "Mixed Breed / Mutt"]
+
   /dogs:
     post:
       tags: [Dogs]
