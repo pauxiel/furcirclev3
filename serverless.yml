@@ -8,6 +8,7 @@ provider:
   memorySize: 256
   timeout: 29
   stage: ${opt:stage, 'dev'}
+  versionFunctions: false
   environment:
     STAGE: ${self:provider.stage}
     TABLE_NAME: !Ref FurcircleTable
@@ -162,6 +163,39 @@ functions:
         Action:
           - s3:PutObject
         Resource: !Sub ${DogPhotosBucket.Arn}/*
+
+  getMedicalRecordUploadUrl:
+    handler: src/functions/dogs/getMedicalRecordUploadUrl.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}/medical-record/upload
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+        Resource: !Sub ${DogPhotosBucket.Arn}/*
+
+  addHealthRecord:
+    handler: src/functions/dogs/addHealthRecord.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}/health-records
+          method: POST
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+        Resource: !GetAtt FurcircleTable.Arn
 
   getCurrentPlan:
     handler: src/functions/dogs/getCurrentPlan.handler
@@ -1195,7 +1229,6 @@ build:
     sourcemap: true
     target: node20
 
-plugins: []
 
 resources:
   Resources:
