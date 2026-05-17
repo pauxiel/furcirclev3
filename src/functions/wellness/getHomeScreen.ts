@@ -110,6 +110,11 @@ export const handler = async (
     dog: sanitizeDog(dog),
     plan: {
       month: plan['month'],
+      monthLabel: (() => {
+        const age = plan['ageMonthsAtPlan'] as number;
+        const name = dog['name'] as string;
+        return age < 12 ? `Month ${age} with ${name}` : `Year ${Math.floor(age / 12)} with ${name}`;
+      })(),
       ageMonthsAtPlan: plan['ageMonthsAtPlan'],
       wellnessScore: dog['wellnessScore'],
       categoryScores: dog['categoryScores'] as CategoryScores,
