@@ -413,6 +413,91 @@ paths:
                   photoUrl: { type: string }
                   expiresIn: { type: integer }
 
+  /dogs/{dogId}/medical-record/upload:
+    post:
+      tags: [Dogs]
+      summary: Get presigned S3 URL for medical record file upload
+      parameters:
+        - name: dogId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [contentType]
+              properties:
+                contentType:
+                  type: string
+                  enum: [image/jpeg, image/jpg, image/png, image/webp, application/pdf]
+      responses:
+        '200':
+          description: Presigned upload URL (valid 300s). PUT file bytes directly to uploadUrl, then call POST /dogs/{dogId}/health-records with the returned recordId and fileKey.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadUrl: { type: string }
+                  recordId: { type: string, format: uuid }
+                  fileKey: { type: string }
+        '403':
+          description: Dog not owned by caller
+        '404':
+          description: Dog not found
+
+  /dogs/{dogId}/health-records:
+    post:
+      tags: [Dogs]
+      summary: Save medical record metadata to DynamoDB after S3 upload
+      parameters:
+        - name: dogId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recordId, fileKey, type]
+              properties:
+                recordId:
+                  type: string
+                  format: uuid
+                  description: UUID returned by POST /dogs/{dogId}/medical-record/upload
+                fileKey:
+                  type: string
+                  description: S3 object key returned by the upload URL endpoint
+                type:
+                  type: string
+                  description: Record category (e.g. vet_record, vaccination, lab_result)
+                title:
+                  type: string
+                  description: Display label — defaults to type if omitted
+      responses:
+        '201':
+          description: Health record saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dogId: { type: string }
+                  recordId: { type: string }
+                  type: { type: string }
+                  title: { type: string }
+                  fileKey: { type: string }
+                  createdAt: { type: string, format: date-time }
+        '403':
+          description: Dog not owned by caller
+        '404':
+          description: Dog not found
+
   /dogs/{dogId}/plan:
     get:
       tags: [Dogs]

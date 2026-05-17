@@ -20,13 +20,13 @@ export const handler = async (
   if (!dog) return error('DOG_NOT_FOUND', 'Dog not found', 404);
   if (dog['ownerId'] !== userId) return error('FORBIDDEN', 'Access denied', 403);
 
+  const photoUrl = (dog['photoUrl'] as string) ?? null;
+  const month = new Date().toISOString().slice(0, 7);
+
   // If plan is still generating, return early with status
   if (dog['planStatus'] !== 'ready') {
-    const month = new Date().toISOString().slice(0, 7);
-    return success({ dogId, month, planStatus: dog['planStatus'] });
+    return success({ dogId, month, planStatus: dog['planStatus'], photoUrl });
   }
-
-  const month = new Date().toISOString().slice(0, 7);
 
   const { Item: plan } = await docClient.send(
     new GetCommand({ TableName: table, Key: { PK: `DOG#${dogId}`, SK: `PLAN#${month}` } }),
@@ -37,5 +37,5 @@ export const handler = async (
   // Strip DynamoDB key fields from the response
   const { PK: _PK, SK: _SK, GSI1PK: _G1PK, GSI1SK: _G1SK, ...planData } = plan as Record<string, unknown>;
 
-  return success(planData);
+  return success({ ...planData, photoUrl });
 };
