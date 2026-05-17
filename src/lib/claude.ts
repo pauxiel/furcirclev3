@@ -31,7 +31,7 @@ export interface DogProfile {
 
 export interface PlanData {
   whatToExpect: string;
-  whatToDo: Array<{ text: string; videoTopic?: string }>;
+  whatToDo: Array<{ title: string; text: string; videoTopic?: string }>;
   whatNotToDo: Array<{ text: string }>;
   watchFor: Array<{ text: string }>;
   earlyWarningSigns: Array<{ text: string; action: string }>;
@@ -56,7 +56,7 @@ Today's month: ${month}
 Return a JSON object with these exact keys:
 {
   "whatToExpect": "string — exactly 2 sentences about this developmental stage",
-  "whatToDo": [{ "text": "string", "videoTopic": "string — optional topic for training video" }],
+  "whatToDo": [{ "title": "string — 3-5 word bold topic label (e.g. 'Socialisation walks')", "text": "string — 1-2 sentences of actionable advice", "videoTopic": "string — optional topic for training video" }],
   "whatNotToDo": [{ "text": "string" }],
   "watchFor": [{ "text": "string" }],
   "earlyWarningSigns": [{ "text": "string", "action": "string" }],
@@ -68,7 +68,7 @@ Return a JSON object with these exact keys:
 }
 
 Rules:
-- whatToDo: 4–6 items
+- whatToDo: 4–6 items; title must be 3-5 words max; text must be 1-2 sentences max
 - whatNotToDo: 2–4 items
 - watchFor: 2–4 items
 - earlyWarningSigns: 2–4 items

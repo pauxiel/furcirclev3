@@ -95,8 +95,8 @@ export const handler = async (
     activities.filter((a) => a['type'] === 'completed_task').map((a) => a['taskText'] as string),
   );
 
-  const whatToDo = plan['whatToDo'] as Array<{ text: string; videoTopic: string | null }> ?? [];
-  const actionSteps = whatToDo.map((item) => ({ ...item, completed: completedTexts.has(item.text) }));
+  const whatToDo = plan['whatToDo'] as Array<{ title: string; text: string; videoTopic: string | null }> ?? [];
+  const actionSteps = whatToDo.filter((item) => !completedTexts.has(item.text));
 
   const pillSummaries = {
     whatToDo: `${whatToDo.length} action${whatToDo.length !== 1 ? 's' : ''}`,
