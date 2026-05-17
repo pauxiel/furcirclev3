@@ -55,7 +55,7 @@ Today's month: ${month}
 
 Return a JSON object with these exact keys:
 {
-  "whatToExpect": "string — 2-3 sentence narrative overview of this developmental stage",
+  "whatToExpect": "string — exactly 2 sentences about this developmental stage",
   "whatToDo": [{ "text": "string", "videoTopic": "string — optional topic for training video" }],
   "whatNotToDo": [{ "text": "string" }],
   "watchFor": [{ "text": "string" }],
