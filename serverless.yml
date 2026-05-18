@@ -13,6 +13,7 @@ provider:
     STAGE: ${self:provider.stage}
     TABLE_NAME: !Ref FurcircleTable
     BUCKET_NAME: !Ref DogPhotosBucket
+    CLOUDFRONT_URL: !Sub https://${DogPhotosDistribution.DomainName}
     SNS_TOPIC_ARN: !Ref NotificationsTopic
     STATE_MACHINE_ARN: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:furcircle-generate-plan-${self:provider.stage}
     ANTHROPIC_API_KEY_SSM: /furcircle/${self:provider.stage}/anthropic/apiKey
@@ -1357,6 +1358,49 @@ resources:
           RestrictPublicBuckets: true
         # No CORS needed — mobile native app uploads directly via presigned URL (not a browser)
 
+    DogPhotosBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref DogPhotosBucket
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: cloudfront.amazonaws.com
+              Action: s3:GetObject
+              Resource: !Sub ${DogPhotosBucket.Arn}/*
+              Condition:
+                StringEquals:
+                  AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${DogPhotosDistribution}
+
+    DogPhotosOAC:
+      Type: AWS::CloudFront::OriginAccessControl
+      Properties:
+        OriginAccessControlConfig:
+          Name: furcircle-dog-photos-oac-${self:provider.stage}
+          OriginAccessControlOriginType: s3
+          SigningBehavior: always
+          SigningProtocol: sigv4
+
+    DogPhotosDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Enabled: true
+          Comment: FurCircle dog photos ${self:provider.stage}
+          DefaultCacheBehavior:
+            TargetOriginId: DogPhotosBucketOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized managed policy
+            AllowedMethods: [GET, HEAD]
+            CachedMethods: [GET, HEAD]
+          Origins:
+            - Id: DogPhotosBucketOrigin
+              DomainName: !GetAtt DogPhotosBucket.RegionalDomainName
+              OriginAccessControlId: !GetAtt DogPhotosOAC.Id
+              S3OriginConfig: {}
+          PriceClass: PriceClass_100
+
     NotificationsTopic:
       Type: AWS::SNS::Topic
       Properties:
@@ -1441,6 +1485,10 @@ resources:
       Value: !Ref DogPhotosBucket
       Export:
         Name: ${self:service}-${self:provider.stage}-BucketName
+    CloudFrontUrl:
+      Value: !Sub https://${DogPhotosDistribution.DomainName}
+      Export:
+        Name: ${self:service}-${self:provider.stage}-CloudFrontUrl
     SnsTopicArn:
       Value: !Ref NotificationsTopic
       Export:
