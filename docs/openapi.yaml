@@ -400,7 +400,7 @@ paths:
               type: object
               required: [contentType]
               properties:
-                contentType: { type: string, enum: [image/jpeg, image/png] }
+                contentType: { type: string, enum: [image/jpeg, image/jpg, image/png, image/webp] }
       responses:
         '200':
           description: Presigned upload URL (valid 300s). PUT image bytes directly to uploadUrl, then save photoUrl via PUT /dogs/{dogId}.
@@ -409,9 +409,8 @@ paths:
               schema:
                 type: object
                 properties:
-                  uploadUrl: { type: string }
-                  photoUrl: { type: string }
-                  expiresIn: { type: integer }
+                  uploadUrl: { type: string, description: Presigned S3 PUT URL, valid 300s }
+                  photoUrl: { type: string, description: Full CloudFront CDN URL — save this and use directly as image source }
 
   /dogs/{dogId}/medical-record/upload:
     post:

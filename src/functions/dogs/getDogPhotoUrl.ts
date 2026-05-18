@@ -48,6 +48,8 @@ export const handler = async (
 
   const key = `dogs/${dogId}/profile.${ext}`;
   const uploadUrl = await getPresignedPutUrl(bucket, key, contentType, 300);
+  const cloudfrontUrl = process.env['CLOUDFRONT_URL']!;
+  const photoUrl = `${cloudfrontUrl}/${key}`;
 
-  return success({ uploadUrl, photoUrl: key });
+  return success({ uploadUrl, photoUrl });
 };
