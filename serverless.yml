@@ -227,7 +227,13 @@ functions:
           - dynamodb:GetItem
           - dynamodb:PutItem
           - dynamodb:UpdateItem
-        Resource: !GetAtt FurcircleTable.Arn
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action:
+          - states:StartExecution
+        Resource: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:furcircle-${self:provider.stage}-plan
 
   getActivities:
     handler: src/functions/wellness/getActivities.handler

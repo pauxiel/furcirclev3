@@ -1,5 +1,6 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { SFNClient, StartExecutionCommand } from '@aws-sdk/client-sfn';
 import { v4 as uuidv4 } from 'uuid';
 import { docClient } from '../../lib/dynamodb';
 import { success, error } from '../../lib/response';
@@ -12,6 +13,8 @@ import {
   type ActivityType,
   type CategoryScores,
 } from '../../lib/wellness';
+
+const sfn = new SFNClient({ region: process.env['AWS_REGION'] ?? 'us-east-1' });
 
 const VALID_TYPES: ActivityType[] = ['completed_task', 'skipped_task'];
 
@@ -107,6 +110,58 @@ export const handler = async (
     ),
   ]);
 
+  // Check if all tasks in this month are now complete
+  let monthComplete = false;
+  const stateMachineArn = process.env['STATE_MACHINE_ARN'];
+
+  if (stateMachineArn && whatToDo.length > 0) {
+    const { Items: activities } = await docClient.send(
+      new QueryCommand({
+        TableName: table,
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)',
+        ExpressionAttributeValues: {
+          ':pk': `DOG#${dogId}`,
+          ':prefix': `ACTIVITY#${month}`,
+        },
+      }),
+    );
+
+    const completedTexts = new Set(
+      (activities ?? []).filter((a) => a['type'] === 'completed_task').map((a) => a['taskText'] as string),
+    );
+
+    if (completedTexts.size === whatToDo.length) {
+      // Mark month complete (condition prevents duplicate triggers)
+      try {
+        await docClient.send(
+          new UpdateCommand({
+            TableName: table,
+            Key: { PK: `DOG#${dogId}`, SK: `PLAN#${month}` },
+            UpdateExpression: 'SET monthCompleted = :t, completedAt = :now',
+            ConditionExpression: 'attribute_not_exists(monthCompleted)',
+            ExpressionAttributeValues: { ':t': true, ':now': now },
+          }),
+        );
+
+        const [year, mon] = month.split('-').map(Number);
+        const nextMonth = mon === 12
+          ? `${year + 1}-01`
+          : `${year}-${String(mon + 1).padStart(2, '0')}`;
+
+        await sfn.send(
+          new StartExecutionCommand({
+            stateMachineArn,
+            input: JSON.stringify({ dogId, ownerId, month: nextMonth }),
+          }),
+        );
+
+        monthComplete = true;
+      } catch {
+        // ConditionalCheckFailedException = already triggered by concurrent request; safe to ignore
+      }
+    }
+  }
+
   return success(
     {
       activityId,
@@ -117,6 +172,7 @@ export const handler = async (
       categoryScores: newCategoryScores,
       wellnessScore: newWellnessScore,
       createdAt: now,
+      ...(monthComplete ? { monthComplete: true } : {}),
     },
     201,
   );

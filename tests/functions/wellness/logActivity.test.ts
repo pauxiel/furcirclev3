@@ -3,9 +3,16 @@
  */
 
 const mockDocClientSend = jest.fn();
+const mockSfnSend = jest.fn();
 
 jest.mock('../../../src/lib/dynamodb', () => ({
   docClient: { send: (...args: unknown[]) => mockDocClientSend(...args) },
+}));
+
+jest.mock('@aws-sdk/client-sfn', () => ({
+  SFNClient: jest.fn().mockImplementation(() => ({ send: (...args: unknown[]) => mockSfnSend(...args) })),
+  StartExecutionCommand: jest.fn(),
+  UpdateItemCommand: jest.fn(),
 }));
 
 jest.mock('uuid', () => ({ v4: () => 'test-activity-uuid' }));
@@ -54,6 +61,7 @@ describe('logActivity handler', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env['TABLE_NAME'] = 'furcircle-test';
+    delete process.env['STATE_MACHINE_ARN'];
   });
 
   it('returns 201 with activityId and updated scores for completed_task', async () => {
@@ -172,6 +180,61 @@ describe('logActivity handler', () => {
       taskText: 'Teach sit, come, down and stay using positive reinforcement',
     }));
     expect((res as { statusCode: number }).statusCode).toBe(201);
+  });
+
+  it('triggers sfn.startExecution and returns monthComplete:true when last task logged', async () => {
+    process.env['STATE_MACHINE_ARN'] = 'arn:aws:states:us-east-1:123:stateMachine:furcircle-dev';
+    mockSfnSend.mockResolvedValue({});
+
+    // All activities after write = both tasks complete
+    const allActivities = [
+      { type: 'completed_task', taskText: 'Teach sit, come, down and stay using positive reinforcement' },
+      { type: 'completed_task', taskText: 'Feed twice daily with puppy food' },
+    ];
+
+    mockDocClientSend
+      .mockResolvedValueOnce({ Item: dogProfile })   // GetItem dog
+      .mockResolvedValueOnce({ Item: planRecord })   // GetItem plan
+      .mockResolvedValueOnce({})                     // PutItem activity
+      .mockResolvedValueOnce({})                     // UpdateItem dog
+      .mockResolvedValueOnce({ Items: allActivities }) // Query activities (all complete)
+      .mockResolvedValueOnce({});                    // UpdateItem plan (monthCompleted)
+
+    const res = await handler(makeEvent('dog-123', {
+      type: 'completed_task',
+      taskText: 'Feed twice daily with puppy food',
+    }));
+
+    expect((res as { statusCode: number }).statusCode).toBe(201);
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.monthComplete).toBe(true);
+    expect(mockSfnSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT trigger sfn when not the last task', async () => {
+    process.env['STATE_MACHINE_ARN'] = 'arn:aws:states:us-east-1:123:stateMachine:furcircle-dev';
+
+    // Only 1 of 2 tasks complete after write
+    const partialActivities = [
+      { type: 'completed_task', taskText: 'Teach sit, come, down and stay using positive reinforcement' },
+    ];
+
+    mockDocClientSend
+      .mockResolvedValueOnce({ Item: dogProfile })
+      .mockResolvedValueOnce({ Item: planRecord })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({ Items: partialActivities }); // only 1 done
+
+    const res = await handler(makeEvent('dog-123', {
+      type: 'completed_task',
+      taskText: 'Teach sit, come, down and stay using positive reinforcement',
+    }));
+
+    expect((res as { statusCode: number }).statusCode).toBe(201);
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.monthComplete).toBeUndefined();
+    expect(mockSfnSend).not.toHaveBeenCalled();
   });
 
   it('score does not exceed 100', async () => {

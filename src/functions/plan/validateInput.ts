@@ -3,11 +3,12 @@ import { docClient } from '../../lib/dynamodb';
 
 interface ValidateInputEvent {
   dogId: string;
+  month?: string;
   [key: string]: unknown;
 }
 
 export const handler = async (event: ValidateInputEvent): Promise<Record<string, unknown>> => {
-  const { dogId } = event;
+  const { dogId, month } = event;
   const table = process.env['TABLE_NAME']!;
 
   const { Item: dog } = await docClient.send(
@@ -25,5 +26,6 @@ export const handler = async (event: ValidateInputEvent): Promise<Record<string,
     spayedNeutered: dog['spayedNeutered'] ?? null,
     medicalConditions: dog['medicalConditions'] ?? null,
     environment: dog['environment'] ?? null,
+    ...(month ? { month } : {}),
   };
 };

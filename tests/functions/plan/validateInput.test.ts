@@ -49,6 +49,20 @@ describe('validateInput handler', () => {
     await expect(handler({ dogId: 'missing' })).rejects.toThrow('DOG_NOT_FOUND');
   });
 
+  it('passes month override through when provided', async () => {
+    mockDocClientSend.mockResolvedValueOnce({ Item: dogProfile });
+
+    const result = (await handler({ dogId: 'dog-123', month: '2026-06' })) as Record<string, unknown>;
+    expect(result['month']).toBe('2026-06');
+  });
+
+  it('omits month from output when not provided', async () => {
+    mockDocClientSend.mockResolvedValueOnce({ Item: dogProfile });
+
+    const result = (await handler({ dogId: 'dog-123' })) as Record<string, unknown>;
+    expect(result['month']).toBeUndefined();
+  });
+
   it('passes medicalConditions and environment through', async () => {
     mockDocClientSend.mockResolvedValueOnce({
       Item: { ...dogProfile, medicalConditions: 'Hip dysplasia', environment: 'House with garden' },
