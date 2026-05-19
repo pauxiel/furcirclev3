@@ -246,6 +246,23 @@ functions:
           - !GetAtt FurcircleTable.Arn
           - !Sub ${FurcircleTable.Arn}/index/GSI1
 
+  getPlanStep:
+    handler: src/functions/wellness/getPlanStep.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}/plan/steps/{stepId}
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub ${FurcircleTable.Arn}/index/*
+
   getMonthlyJourney:
     handler: src/functions/wellness/getMonthlyJourney.handler
     events:
