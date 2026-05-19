@@ -453,3 +453,62 @@ All tasks above checked. E2E smoke test passes. Zero Lambda errors. EventBridge 
 
 ## Phase 4 Done Definition
 All tasks above checked. E2E smoke test passes. Stripe webhook verified via Stripe CLI. Agora token generates valid RTC token for booking owner and vet. Zero Lambda errors.
+
+---
+
+# FurCircle Phase 5 — Monthly Wellness Progression
+
+## Task P5-T1 — Update Claude Prompt (stepId + steps[])
+- [ ] Update `PlanData` interface in `src/lib/claude.ts` — add `stepId: string` and `steps[]` to `whatToDo` item type
+- [ ] Update Claude prompt — add `stepId` (kebab-case slug) and `steps[]` (2–4 items, each with `frequency`, `title`, `text`, optional `videoTopic`) to each `whatToDo` entry
+- [ ] Write unit test: verify `generatePlan` output has `stepId` + `steps[]` on all `whatToDo` items
+- [ ] Deploy `callClaude` function + smoke test (invoke locally, check returned shape)
+
+---
+
+## Task P5-T2 — Fix `getHomeScreen` Action Steps
+- [ ] Change line 99 of `getHomeScreen.ts`: replace `filter(!completed)` with `map(item => ({ ...item, completed }))`
+- [ ] Add `allComplete: completedCount === totalTasks` to the `plan` summary block in the response
+- [ ] Update `getHomeScreen.test.ts` — add test: completed step appears in `actionSteps` with `completed: true`
+- [ ] Deploy `getHomeScreen` + verify response includes completed items
+
+---
+
+## Task P5-T3 — Step Detail Endpoint
+- [ ] Write `src/functions/wellness/getPlanStep.ts`
+  - [ ] GetItem dog → ownership check (403/404)
+  - [ ] GetItem current plan
+  - [ ] Find `whatToDo` item by `stepId` → 404 `STEP_NOT_FOUND` if missing
+  - [ ] Query activities → derive `completed` flag for this step
+  - [ ] Return step with `steps[]`, `completed`, `title`, `text`
+- [ ] Add `GET /dogs/{dogId}/plan/steps/{stepId}` route + IAM to `serverless.yml`
+- [ ] Write `tests/functions/wellness/getPlanStep.test.ts` (5 cases: success, completed, not found, 403, 404 dog)
+- [ ] Deploy + smoke test
+
+---
+
+## Task P5-T4 — Month Completion Auto-Trigger
+- [ ] Add `states:StartExecution` IAM to `logActivity` function in `serverless.yml`
+- [ ] Update `src/functions/wellness/logActivity.ts`:
+  - [ ] After writing activity + score update, count total `completedTexts` vs `plan.whatToDo.length`
+  - [ ] If all complete: `UpdateItem` plan `SET monthCompleted=true, completedAt=now` with `ConditionExpression attribute_not_exists(monthCompleted)` (prevent duplicate triggers)
+  - [ ] On condition success: `sfn.startExecution` for next month
+  - [ ] Include `monthComplete: true` in response when triggered
+- [ ] Update `validateInput.ts` — accept and pass through `month` override for next-month plan SK
+- [ ] Update `logActivity.test.ts` — add tests: triggers on last task, does NOT trigger on earlier tasks
+- [ ] Deploy all changed functions + E2E smoke test
+
+---
+
+## Checkpoint — Phase 5 E2E Smoke Test
+- [ ] All 11 smoke test steps pass (see plan.md checkpoint)
+- [ ] Completed action steps visible in home screen with `completed: true`
+- [ ] Step Functions fires on last task completion only
+- [ ] Next month plan generated with correct `ageMonthsAtPlan`
+- [ ] Zero Lambda errors in CloudWatch
+- [ ] Sign off Phase 5 ✅
+
+---
+
+## Phase 5 Done Definition
+All tasks above checked. E2E smoke test passes. Completed tasks visible in home screen with strikethrough. Month auto-advances on last task completion. Zero Lambda errors.
