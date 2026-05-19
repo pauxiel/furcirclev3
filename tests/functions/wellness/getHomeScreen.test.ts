@@ -203,6 +203,38 @@ describe('getHomeScreen handler', () => {
     expect(body.actionSteps).toEqual([]);
   });
 
+  it('plan.allComplete is true when all tasks completed', async () => {
+    const allCompleted = planRecord.whatToDo.map((item) => ({
+      activityId: `act-${item.text.slice(0, 5)}`,
+      type: 'completed_task',
+      taskText: item.text,
+      category: 'trainingBehaviour',
+      createdAt: '2026-04-15T10:00:00Z',
+    }));
+    mockDocClientSend
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [ownerProfile, ownerSubscription] } })
+      .mockResolvedValueOnce({ Items: [dogRecord] })
+      .mockResolvedValueOnce({ Item: planRecord })
+      .mockResolvedValueOnce({ Items: allCompleted });
+
+    const res = await handler(makeEvent());
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.plan.allComplete).toBe(true);
+    expect(body.plan.completedCount).toBe(planRecord.whatToDo.length);
+  });
+
+  it('plan.allComplete is false when tasks remain', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [ownerProfile, ownerSubscription] } })
+      .mockResolvedValueOnce({ Items: [dogRecord] })
+      .mockResolvedValueOnce({ Item: planRecord })
+      .mockResolvedValueOnce({ Items: activityItems }); // only 1 of 3 completed
+
+    const res = await handler(makeEvent());
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.plan.allComplete).toBe(false);
+  });
+
   it('includes pillSummaries in response', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Responses: { 'furcircle-test': [ownerProfile, ownerSubscription] } })
