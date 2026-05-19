@@ -1501,3 +1501,310 @@ curl -H "Authorization: Bearer $TOKEN" https://<api>/dev/bookings/$BOOKING_ID/to
 | Credit deduction succeeds but PutItem booking fails | Very Low | High | Use a DynamoDB transaction (TransactWrite) for step 6+8+9 if consistency is critical |
 | Assessment duplicate race (two concurrent POST /assessments) | Low | Medium | PutItem with ConditionExpression `attribute_not_exists(PK)` on assessment |
 | Stripe test cards rejected in dev | Low | Low | Use Stripe test card numbers (`4242424242424242`) in all smoke tests |
+
+---
+---
+
+# FurCircle — Phase 8 Implementation Plan
+# Monthly Wellness Progression (Screen Two + Month Unlock)
+
+## Context
+
+The mobile app has two screens for the monthly wellness plan:
+
+- **Screen One (Home)** — shows action step cards. Each card = one `whatToDo` item from the AI plan. Completed cards show a strikethrough title.
+- **Screen Two (Step Detail)** — opened by tapping a card. Shows the card's title + description at the top, then a list of individual sub-tasks (with frequency badge, title, description, optional "Watch Video" link). Each sub-task has a circular checkbox. At the bottom: "Tap complete when you're ready to unlock Month 4!" — tapping this marks the card complete in screen one.
+
+When ALL cards in screen one are struck through → month is complete → next month's AI plan is automatically triggered.
+
+## What exists today
+
+| Component | Status | Gap |
+|-----------|--------|-----|
+| `whatToDo` in plan | `{ title, text, videoTopic }` | No `stepId`, no `steps[]` sub-tasks |
+| `getHomeScreen` actionSteps | Filters OUT completed items | Should include ALL items with `completed` flag |
+| `logActivity` | Marks a task complete by `taskText` | Does not check if month is now complete |
+| Step detail endpoint | Does not exist | Needed for screen two |
+| Month completion trigger | Only via EventBridge cron | Not triggered by user completing all tasks |
+
+## Dependency Graph
+
+```
+[P8-T1] Update Claude prompt — add stepId + steps[] to whatToDo items
+    │
+    ├──────────────────────────────────┐
+    ▼                                  ▼
+[P8-T2] Fix getHomeScreen           [P8-T3] Step detail endpoint
+        actionSteps (include all           GET /dogs/{dogId}/plan/steps/{stepId}
+        with completed flag)
+    │
+    ▼
+[P8-T4] Month completion auto-trigger
+        in logActivity (all tasks done → sfn.startExecution next month)
+    │
+    ▼
+[CHECKPOINT] E2E smoke test
+```
+
+---
+
+## Task P8-T1 — Update Claude Prompt: `stepId` + `steps[]` on `whatToDo`
+
+**What:** Change the Claude prompt in `src/lib/claude.ts` so each `whatToDo` item includes a unique `stepId` (slug) and a `steps[]` array of individual sub-tasks. Screen two reads from `steps[]`.
+
+**Files changed:**
+- `src/lib/claude.ts` — updated prompt + `PlanData` interface
+
+**New `whatToDo` item shape:**
+```json
+{
+  "stepId": "basic-commands",
+  "title": "Basic commands this month",
+  "text": "1-2 sentence summary shown at top of screen two",
+  "steps": [
+    {
+      "frequency": "Three times daily",
+      "title": "Teach sit using a treat lure",
+      "text": "Hold a treat above your dog's nose and slowly move it back over their head...",
+      "videoTopic": "lure shaping sit command"
+    }
+  ]
+}
+```
+
+**Prompt rules added:**
+- `stepId`: lowercase kebab-case slug, unique within the plan, 2-5 words
+- `steps[]`: 2–4 items per `whatToDo` entry
+- Each step: `frequency` (e.g. "Daily", "Three times daily", "Every session"), `title` (3–6 words), `text` (1–2 sentences), optional `videoTopic`
+
+**TypeScript interface update (`PlanData`):**
+```typescript
+whatToDo: Array<{
+  stepId: string;
+  title: string;
+  text: string;
+  steps: Array<{
+    frequency: string;
+    title: string;
+    text: string;
+    videoTopic?: string;
+  }>;
+}>;
+```
+
+**Important:** Existing plans in DynamoDB won't have `stepId` or `steps`. The new endpoint (P8-T3) must handle missing fields gracefully.
+
+**Acceptance criteria:**
+- [ ] `generatePlan()` returns `whatToDo` items each with `stepId` + `steps[]`
+- [ ] `stepId` values are unique within a single plan
+- [ ] Each step has `frequency`, `title`, `text`
+- [ ] `steps[]` has 2–4 items per `whatToDo` entry
+- [ ] TypeScript compiles with no errors
+
+**Verification:**
+```bash
+sls invoke local -f callClaude --stage dev --data '{"dogId":"test","breed":"Golden Retriever","ageMonths":3}'
+# Check returned whatToDo[0].stepId exists and steps[] is present
+```
+
+---
+
+## Task P8-T2 — Fix `getHomeScreen` Action Steps (Include Completed + `completed` Flag)
+
+**What:** `getHomeScreen.ts` line 99 currently **filters out** completed action steps. This means completed cards disappear from screen one instead of showing a strikethrough. Fix: include ALL `whatToDo` items, each with a `completed` boolean.
+
+**Files changed:**
+- `src/functions/wellness/getHomeScreen.ts`
+- `tests/functions/wellness/getHomeScreen.test.ts` (update tests)
+
+**Current (wrong):**
+```typescript
+const actionSteps = whatToDo.filter((item) => !completedTexts.has(item.text));
+```
+
+**Fixed:**
+```typescript
+const actionSteps = whatToDo.map((item) => ({
+  ...item,
+  completed: completedTexts.has(item.text),
+}));
+```
+
+Also: the `plan` summary block should expose `completedCount` and `totalTasks` so screen one can derive "all done" state without inspecting each card.
+
+**Acceptance criteria:**
+- [ ] Completed action steps appear in `actionSteps` with `completed: true`
+- [ ] Incomplete steps appear with `completed: false`
+- [ ] `plan.completedCount` and `plan.totalTasks` correct
+- [ ] `plan.allComplete: true` when `completedCount === totalTasks` (convenience flag for mobile)
+- [ ] Tests updated and passing
+
+**Verification:**
+```bash
+# Log one activity, then GET /home — that step should still appear with completed: true
+POST /dogs/{dogId}/activities { type: "completed_task", taskText: "..." }
+GET /home → actionSteps should include all items, completed one has completed: true
+```
+
+---
+
+## Task P8-T3 — Step Detail Endpoint: `GET /dogs/{dogId}/plan/steps/{stepId}`
+
+**What:** New endpoint that powers screen two. Returns the full detail of a single `whatToDo` item — its description, sub-tasks (`steps[]`), and whether it's been marked complete.
+
+**New files:**
+- `src/functions/wellness/getPlanStep.ts`
+- `tests/functions/wellness/getPlanStep.test.ts`
+
+**serverless.yml addition:**
+```yaml
+getPlanStep:
+  handler: src/functions/wellness/getPlanStep.handler
+  events:
+    - httpApi: { path: /dogs/{dogId}/plan/steps/{stepId}, method: GET, authorizer: cognitoAuthorizer }
+  iamRoleStatements:
+    - Effect: Allow
+      Action: [dynamodb:GetItem, dynamodb:Query]
+      Resource:
+        - !GetAtt FurcircleTable.Arn
+        - !Sub "${FurcircleTable.Arn}/index/*"
+```
+
+**Logic:**
+1. `GetItem` dog → ownership check (403/404)
+2. `GetItem` current plan (`PLAN#${current-month}`)
+3. Find `whatToDo` item where `item.stepId === stepId` → 404 `STEP_NOT_FOUND` if not found
+4. Query activities: `PK=DOG#${dogId}`, `SK begins_with ACTIVITY#${month}`
+5. Build `completedTexts` set from `completed_task` activities
+6. Return step with `completed: completedTexts.has(step.text)`
+
+**Response shape:**
+```json
+{
+  "stepId": "basic-commands",
+  "title": "Basic Commands This Month",
+  "text": "Your Golden Retriever is at the peak...",
+  "completed": false,
+  "steps": [
+    { "frequency": "Three times daily", "title": "Teach sit using a treat lure", "text": "...", "videoTopic": "..." }
+  ]
+}
+```
+
+**Graceful fallback for old plans** (no `stepId`/`steps`): return 404 `STEP_NOT_FOUND`.
+
+**Acceptance criteria:**
+- [ ] `GET /dogs/{dogId}/plan/steps/basic-commands` → 200 with full step detail
+- [ ] `completed: true` after `logActivity` marks that step done
+- [ ] Invalid `stepId` → 404 `STEP_NOT_FOUND`
+- [ ] 403 for another owner's dog
+- [ ] 5 unit tests: success, completed state, not found, 403, 404 dog
+
+**Verification:**
+```bash
+GET /dogs/{dogId}/plan/steps/{stepId} → steps[] array visible
+# After logActivity for this step:
+GET /dogs/{dogId}/plan/steps/{stepId} → completed: true
+```
+
+---
+
+## Task P8-T4 — Month Completion Auto-Trigger in `logActivity`
+
+**What:** When the last task in the current month is marked `completed_task`, automatically trigger Step Functions to generate the next month's plan. Also marks the current plan record as `monthCompleted = true`.
+
+**Files changed:**
+- `src/functions/wellness/logActivity.ts` — add post-write completion check
+- `tests/functions/wellness/logActivity.test.ts` — add tests for month completion trigger
+
+**Logic added to end of `logActivity` (after writing ACTIVITY + updating dog score):**
+```
+completedTexts = all completed taskTexts for this month (re-query or derive from plan + prior activities)
+if completedTexts.size === plan.whatToDo.length:
+  → UpdateItem plan: SET monthCompleted = true, completedAt = now
+  → sfn.startExecution({ stateMachineArn, input: { dogId, month: nextMonth } })
+  → include monthComplete: true in response
+```
+
+**Next month derivation:**
+```typescript
+const [year, mon] = currentMonth.split('-').map(Number);
+const nextMonth = mon === 12
+  ? `${year + 1}-01`
+  : `${year}-${String(mon + 1).padStart(2, '0')}`;
+```
+
+**`validateInput` in Step Functions** already receives `dogId` — needs to also accept `month` override (optional) so next month's plan is stored under the correct `PLAN#${nextMonth}` SK.
+
+**serverless.yml:** `logActivity` needs `states:StartExecution` IAM added.
+
+**Acceptance criteria:**
+- [ ] Logging the last task triggers `sfn.startExecution` (verify Step Functions console)
+- [ ] Plan record has `monthCompleted: true` after last task
+- [ ] `logActivity` response includes `monthComplete: true` on the final task
+- [ ] Logging a task that is NOT the last one does NOT trigger Step Functions
+- [ ] `validateInput` passes `month` override so next plan is stored under correct SK
+- [ ] Unit tests mock `sfn.startExecution` and verify it's called only when all tasks done
+
+**Verification:**
+```bash
+# Log all tasks one by one
+# On the final task, response includes monthComplete: true
+# Step Functions console shows new execution started
+# GET /dogs/{dogId}/plan?month=<next-month> → 200 or 'generating' within 30s
+```
+
+---
+
+## Checkpoint — Phase 8 E2E Smoke Test
+
+**Full flow:**
+```
+1.  Create a dog → wait for plan (planStatus=ready)
+2.  GET /home → verify actionSteps shows all items with completed: false
+3.  GET /dogs/{dogId}/plan/steps/{first stepId} → verify steps[] present
+4.  POST /dogs/{dogId}/activities (completed_task, first task) → completed: false for monthComplete
+5.  GET /home → verify that task now shows completed: true (not removed)
+6.  GET /dogs/{dogId}/plan/steps/{first stepId} → completed: true
+7.  Log all remaining tasks one by one
+8.  Final task response → monthComplete: true
+9.  Step Functions console → new execution started for next month
+10. Poll GET /dogs/{dogId}/plan?month=<next-month> until planStatus=ready (max 60s)
+11. GET /home → new month's actionSteps loaded, all completed: false
+```
+
+**Pass criteria:**
+- [ ] All 11 steps succeed
+- [ ] No task disappears from home screen after being completed
+- [ ] `plan.allComplete` becomes `true` when all tasks done
+- [ ] Step Functions fires exactly once (not on every activity log)
+- [ ] Next month plan has correct `ageMonthsAtPlan` (incremented)
+- [ ] Zero Lambda errors in CloudWatch
+
+---
+
+## New Files Summary
+
+| File | Purpose |
+|------|---------|
+| `src/functions/wellness/getPlanStep.ts` | GET /dogs/{dogId}/plan/steps/{stepId} — screen two detail |
+
+## Changed Files Summary
+
+| File | Change |
+|------|--------|
+| `src/lib/claude.ts` | Add `stepId` + `steps[]` to `whatToDo` prompt + `PlanData` type |
+| `src/functions/wellness/getHomeScreen.ts` | Include all actionSteps with `completed` flag; add `allComplete` |
+| `src/functions/wellness/logActivity.ts` | Auto-trigger next month Step Functions when all tasks complete |
+
+---
+
+## Risk Register
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|-----------|--------|-----------|
+| Old plans (no `stepId`) break step detail endpoint | High | Medium | Graceful 404 `STEP_NOT_FOUND` for plans missing `stepId` |
+| `logActivity` triggers Step Functions multiple times (race) | Medium | Medium | `UpdateItem plan SET monthCompleted = true` with `ConditionExpression attribute_not_exists(monthCompleted)` — only one Lambda wins |
+| Claude generates duplicate `stepId` values | Low | Low | Unique constraint in prompt; validate uniqueness in `savePlan` and re-generate if clash |
+| `validateInput` Step Function ignores `month` override | Low | High | Update `validateInput` to pass `month` through; `savePlan` uses it as the SK |
+| `ageMonthsAtPlan` wrong on next month's plan | Low | Medium | Derive from dog's current `ageMonths` + 1 in `validateInput` |
