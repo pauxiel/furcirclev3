@@ -86,6 +86,15 @@ components:
         planStatus: { type: string, enum: [generating, ready, failed] }
         createdAt: { type: string, format: date-time }
 
+    PlanStep:
+      type: object
+      required: [frequency, title, text]
+      properties:
+        frequency: { type: string, example: "Three times daily" }
+        title: { type: string, example: "Teach sit using treat lure" }
+        text: { type: string }
+        videoTopic: { type: string, nullable: true }
+
     WellnessPlan:
       type: object
       properties:
@@ -98,7 +107,13 @@ components:
           items:
             type: object
             properties:
+              stepId: { type: string, example: "basic-commands" }
+              title: { type: string }
               text: { type: string }
+              videoTopic: { type: string, nullable: true }
+              steps:
+                type: array
+                items: { $ref: '#/components/schemas/PlanStep' }
         whatNotToDo:
           type: array
           items:
@@ -119,6 +134,8 @@ components:
               text: { type: string }
               action: { type: string }
         wellnessScore: { type: integer }
+        monthCompleted: { type: boolean, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
         generatedAt: { type: string, format: date-time }
 
     Thread:
@@ -545,29 +562,85 @@ paths:
   /home:
     get:
       tags: [Dogs]
-      summary: Personalised home feed — today's plan tasks and upcoming items
+      summary: Personalised home screen — dog, plan summary, action steps, CTAs
+      security:
+        - CognitoJWT: []
+      parameters:
+        - name: dogId
+          in: query
+          required: false
+          schema: { type: string }
+          description: Target dog (defaults to first dog if omitted)
       responses:
         '200':
-          description: Home feed
+          description: Home screen data
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  dogs:
+                  owner:
+                    type: object
+                    properties:
+                      userId: { type: string }
+                      firstName: { type: string }
+                      email: { type: string }
+                  dog:
+                    nullable: true
+                    type: object
+                    properties:
+                      dogId: { type: string }
+                      name: { type: string }
+                      breed: { type: string }
+                      ageMonths: { type: integer }
+                      planStatus: { type: string, enum: [generating, ready, failed] }
+                      wellnessScore: { type: integer, nullable: true }
+                      categoryScores: { type: object }
+                      photoUrl: { type: string, nullable: true }
+                  plan:
+                    nullable: true
+                    type: object
+                    properties:
+                      month: { type: string, example: "2026-05" }
+                      monthLabel: { type: string, example: "Month 3 with Buddy" }
+                      ageMonthsAtPlan: { type: integer }
+                      wellnessScore: { type: integer }
+                      categoryScores: { type: object }
+                      completedCount: { type: integer }
+                      totalTasks: { type: integer }
+                      allComplete: { type: boolean, description: "true when all action steps are completed" }
+                  actionSteps:
                     type: array
                     items:
                       type: object
                       properties:
-                        dogId: { type: string }
-                        name: { type: string }
-                        wellnessScore: { type: integer, nullable: true }
-                        todaysTasks: { type: array, items: { type: object } }
+                        stepId: { type: string, nullable: true, example: "basic-commands" }
+                        title: { type: string }
+                        text: { type: string }
+                        videoTopic: { type: string, nullable: true }
+                        completed: { type: boolean }
+                  pillSummaries:
+                    nullable: true
+                    type: object
+                    properties:
+                      whatToDo: { type: string, example: "4 actions" }
+                      whatNotToDo: { type: string, example: "3 to avoid" }
+                      watchFor: { type: string, example: "2 to watch" }
+                      earlyWarningSigns: { type: string, example: "2 warning signs" }
+                  ctaBanners:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type: { type: string, enum: [upgrade] }
+                        message: { type: string }
 
   /dogs/{dogId}/activities:
     post:
       tags: [Dogs]
-      summary: Log an activity for a dog
+      summary: Log a completed or skipped task
+      security:
+        - CognitoJWT: []
       parameters:
         - name: dogId
           in: path
@@ -579,17 +652,35 @@ paths:
           application/json:
             schema:
               type: object
-              required: [type, notes]
+              required: [type, taskText]
               properties:
-                type: { type: string }
-                notes: { type: string }
-                durationMinutes: { type: integer }
+                type: { type: string, enum: [completed_task, skipped_task] }
+                taskText: { type: string, description: "Exact text of the whatToDo item from the current plan" }
       responses:
         '201':
           description: Activity logged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activityId: { type: string }
+                  dogId: { type: string }
+                  type: { type: string }
+                  taskText: { type: string }
+                  category: { type: string }
+                  categoryScores: { type: object }
+                  wellnessScore: { type: integer }
+                  createdAt: { type: string, format: date-time }
+                  monthComplete: { type: boolean, description: "Present and true only when this task was the last one in the month — triggers next month plan generation" }
+        '400': { description: VALIDATION_ERROR or TASK_NOT_FOUND }
+        '403': { description: FORBIDDEN }
+        '404': { description: DOG_NOT_FOUND }
     get:
       tags: [Dogs]
       summary: List logged activities for a dog
+      security:
+        - CognitoJWT: []
       parameters:
         - name: dogId
           in: path
@@ -598,6 +689,41 @@ paths:
       responses:
         '200':
           description: Activity list
+
+  /dogs/{dogId}/plan/steps/{stepId}:
+    get:
+      tags: [Dogs]
+      summary: Step detail — Screen Two data for a single whatToDo card
+      security:
+        - CognitoJWT: []
+      parameters:
+        - name: dogId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: stepId
+          in: path
+          required: true
+          schema: { type: string }
+          description: kebab-case slug from whatToDo[].stepId (e.g. "basic-commands")
+      responses:
+        '200':
+          description: Step detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stepId: { type: string }
+                  title: { type: string }
+                  text: { type: string }
+                  completed: { type: boolean }
+                  videoTopic: { type: string, nullable: true }
+                  steps:
+                    type: array
+                    items: { $ref: '#/components/schemas/PlanStep' }
+        '403': { description: FORBIDDEN }
+        '404': { description: DOG_NOT_FOUND / PLAN_NOT_FOUND / STEP_NOT_FOUND }
 
   /dogs/{dogId}/journey:
     get:
