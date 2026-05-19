@@ -29,9 +29,22 @@ export interface DogProfile {
   environment?: string | null;
 }
 
+export interface PlanStep {
+  frequency: string;
+  title: string;
+  text: string;
+  videoTopic?: string;
+}
+
 export interface PlanData {
   whatToExpect: string;
-  whatToDo: Array<{ title: string; text: string; videoTopic?: string }>;
+  whatToDo: Array<{
+    stepId: string;
+    title: string;
+    text: string;
+    steps: PlanStep[];
+    videoTopic?: string;
+  }>;
   whatNotToDo: Array<{ text: string }>;
   watchFor: Array<{ text: string }>;
   earlyWarningSigns: Array<{ text: string; action: string }>;
@@ -56,7 +69,22 @@ Today's month: ${month}
 Return a JSON object with these exact keys:
 {
   "whatToExpect": "string — exactly 2 sentences about this developmental stage",
-  "whatToDo": [{ "title": "string — 3-5 word bold topic label (e.g. 'Socialisation walks')", "text": "string — 1-2 sentences of actionable advice", "videoTopic": "string — optional topic for training video" }],
+  "whatToDo": [
+    {
+      "stepId": "string — unique kebab-case slug, 2-5 words, e.g. 'basic-commands', 'socialisation-walks'",
+      "title": "string — 3-5 word bold topic label (e.g. 'Socialisation walks')",
+      "text": "string — 1-2 sentences of actionable advice shown at top of detail screen",
+      "videoTopic": "string — optional search phrase for a tutorial video",
+      "steps": [
+        {
+          "frequency": "string — how often, e.g. 'Daily', 'Three times daily', 'Every session'",
+          "title": "string — 3-6 words",
+          "text": "string — 1-2 sentences of specific instruction",
+          "videoTopic": "string — optional search phrase for a tutorial video"
+        }
+      ]
+    }
+  ],
   "whatNotToDo": [{ "text": "string" }],
   "watchFor": [{ "text": "string" }],
   "earlyWarningSigns": [{ "text": "string", "action": "string" }],
@@ -69,6 +97,8 @@ Return a JSON object with these exact keys:
 
 Rules:
 - whatToDo: 4–6 items; title must be 3-5 words max; text must be 1-2 sentences max
+- stepId: lowercase kebab-case, unique within the plan, no numbers
+- steps: 2–4 items per whatToDo entry; each step has frequency, title, text; videoTopic is optional
 - whatNotToDo: 2–4 items
 - watchFor: 2–4 items
 - earlyWarningSigns: 2–4 items
