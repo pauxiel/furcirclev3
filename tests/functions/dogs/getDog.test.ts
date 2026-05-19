@@ -37,6 +37,10 @@ const dogProfile = {
   ageMonths: 3,
   planStatus: 'ready',
   wellnessScore: 72,
+  photoUrl: 'https://cdn.example.com/dogs/dog-123/profile.jpeg',
+  spayedNeutered: 'not_yet',
+  medicalConditions: 'Hip dysplasia, Seasonal allergies',
+  environment: 'House with garden',
   createdAt: '2026-04-15T10:00:00Z',
 };
 
@@ -57,6 +61,32 @@ describe('getDog handler', () => {
     expect(body.dogId).toBe('dog-123');
     expect(body.name).toBe('Buddy');
     expect(body.healthRecords).toEqual([]);
+  });
+
+  it('returns photoUrl, medicalConditions, environment, spayedNeutered in response', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Item: dogProfile })
+      .mockResolvedValueOnce({ Items: [] });
+
+    const res = await getDogHandler(makeGetDogEvent('dog-123'));
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.photoUrl).toBe('https://cdn.example.com/dogs/dog-123/profile.jpeg');
+    expect(body.medicalConditions).toBe('Hip dysplasia, Seasonal allergies');
+    expect(body.environment).toBe('House with garden');
+    expect(body.spayedNeutered).toBe('not_yet');
+  });
+
+  it('returns null for optional fields when not set on dog', async () => {
+    const minimalProfile = { PK: 'DOG#dog-123', SK: 'PROFILE', dogId: 'dog-123', ownerId: 'owner-123', name: 'Buddy', breed: 'Lab', ageMonths: 12, planStatus: 'ready', createdAt: '2026-01-01T00:00:00Z' };
+    mockDocClientSend
+      .mockResolvedValueOnce({ Item: minimalProfile })
+      .mockResolvedValueOnce({ Items: [] });
+
+    const res = await getDogHandler(makeGetDogEvent('dog-123'));
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.photoUrl).toBeNull();
+    expect(body.medicalConditions).toBeNull();
+    expect(body.spayedNeutered).toBeNull();
   });
 
   it('returns 200 with healthRecords when present', async () => {

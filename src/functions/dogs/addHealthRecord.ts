@@ -17,16 +17,18 @@ export const handler = async (
     return error('VALIDATION_ERROR', 'Invalid JSON body', 400);
   }
 
-  const { recordId, fileKey, type, title } = body;
+  const { recordId, fileKey, type, title, vaccineName, nextDueDate } = body;
 
   if (!recordId || typeof recordId !== 'string') {
     return error('VALIDATION_ERROR', 'recordId is required', 400);
   }
-  if (!fileKey || typeof fileKey !== 'string') {
-    return error('VALIDATION_ERROR', 'fileKey is required', 400);
-  }
   if (!type || typeof type !== 'string') {
     return error('VALIDATION_ERROR', 'type is required', 400);
+  }
+  const hasFile = fileKey && typeof fileKey === 'string';
+  const hasManual = nextDueDate && typeof nextDueDate === 'string';
+  if (!hasFile && !hasManual) {
+    return error('VALIDATION_ERROR', 'fileKey or nextDueDate is required', 400);
   }
 
   const userId = getUserId(event);
@@ -40,16 +42,19 @@ export const handler = async (
   if (dog['ownerId'] !== userId) return error('FORBIDDEN', 'Access denied', 403);
 
   const now = new Date().toISOString();
-  const item = {
+  const item: Record<string, unknown> = {
     PK: `DOG#${dogId}`,
     SK: `HEALTH#${type}#${recordId}`,
     dogId,
     recordId,
     type,
-    title: title && typeof title === 'string' ? title : type,
-    fileKey,
+    title: title && typeof title === 'string' ? title : (vaccineName && typeof vaccineName === 'string' ? vaccineName : type),
     createdAt: now,
   };
+
+  if (hasFile) item['fileKey'] = fileKey;
+  if (hasManual) item['nextDueDate'] = nextDueDate;
+  if (vaccineName && typeof vaccineName === 'string') item['vaccineName'] = vaccineName;
 
   await docClient.send(new PutCommand({ TableName: table, Item: item }));
 

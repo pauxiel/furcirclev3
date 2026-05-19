@@ -3,16 +3,16 @@ import { handler } from '../../../src/functions/subscriptions/getSubscriptionPla
 type Result = { statusCode: number; body: string };
 
 describe('getSubscriptionPlans handler', () => {
-  it('returns 200 with 3 plans', async () => {
+  it('returns 200 with 4 plans', async () => {
     const result = (await handler({} as never)) as Result;
     expect(result.statusCode).toBe(200);
-    expect(JSON.parse(result.body).plans).toHaveLength(3);
+    expect(JSON.parse(result.body).plans).toHaveLength(4);
   });
 
-  it('plan keys are welcome, protector, proactive', async () => {
+  it('plan keys are welcome, protector, proactive, complete_circle', async () => {
     const result = (await handler({} as never)) as Result;
     const { plans } = JSON.parse(result.body);
-    expect(plans.map((p: { key: string }) => p.key)).toEqual(['welcome', 'protector', 'proactive']);
+    expect(plans.map((p: { key: string }) => p.key)).toEqual(['welcome', 'protector', 'proactive', 'complete_circle']);
   });
 
   it('welcome plan has price 0 and no interval', async () => {
@@ -30,7 +30,7 @@ describe('getSubscriptionPlans handler', () => {
     const proactive = plans[2];
     expect(proactive.credits).toBe(70);
     expect(proactive.badge).toBe('Most Popular');
-    expect(proactive.price).toBe(3800);
+    expect(proactive.price).toBe(3999);
   });
 
   it('each plan has features array', async () => {
