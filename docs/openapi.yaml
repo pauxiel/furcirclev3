@@ -79,7 +79,7 @@ components:
         dateOfBirth: { type: string, nullable: true }
         photoUrl: { type: string, nullable: true }
         adoptedFromShelter: { type: boolean }
-        spayedNeutered: { type: string, enum: [yes, no, not_yet] }
+        spayedNeutered: { type: string, enum: [not_yet, yes_spayed, yes_neutered], nullable: true }
         medicalConditions: { type: string, nullable: true }
         environment: { type: string, nullable: true }
         wellnessScore: { type: integer, nullable: true }
@@ -321,7 +321,7 @@ paths:
                 ageMonths: { type: integer, minimum: 0, maximum: 240 }
                 dateOfBirth: { type: string, format: date }
                 adoptedFromShelter: { type: boolean }
-                spayedNeutered: { type: string, enum: [yes, no, not_yet] }
+                spayedNeutered: { type: string, enum: [not_yet, yes_spayed, yes_neutered], nullable: true }
                 medicalConditions: { type: string }
                 additionalNotes: { type: string }
                 environment: { type: string }
@@ -378,7 +378,7 @@ paths:
                 breed: { type: string }
                 ageMonths: { type: integer }
                 photoUrl: { type: string }
-                spayedNeutered: { type: string, enum: [yes, no, not_yet] }
+                spayedNeutered: { type: string, enum: [not_yet, yes_spayed, yes_neutered], nullable: true }
                 medicalConditions: { type: string }
                 environment: { type: string }
       responses:
@@ -456,7 +456,13 @@ paths:
   /dogs/{dogId}/health-records:
     post:
       tags: [Dogs]
-      summary: Save medical record metadata to DynamoDB after S3 upload
+      summary: Save health record — file upload (Mode 1) or manual entry (Mode 2)
+      description: |
+        Two modes:
+        - **Mode 1 (file upload)**: provide `fileKey` from POST /dogs/{dogId}/medical-record/upload
+        - **Mode 2 (manual entry)**: provide `vaccineName` + `nextDueDate` — no file required
+
+        At least one of `fileKey` or `nextDueDate` must be present.
       parameters:
         - name: dogId
           in: path
@@ -468,21 +474,28 @@ paths:
           application/json:
             schema:
               type: object
-              required: [recordId, fileKey, type]
+              required: [recordId, type]
               properties:
                 recordId:
                   type: string
                   format: uuid
-                  description: UUID returned by POST /dogs/{dogId}/medical-record/upload
-                fileKey:
-                  type: string
-                  description: S3 object key returned by the upload URL endpoint
+                  description: Client-generated UUID for this record
                 type:
                   type: string
-                  description: Record category (e.g. vet_record, vaccination, lab_result)
+                  description: Record category (e.g. vaccination, vet_record, lab_result)
                 title:
                   type: string
-                  description: Display label — defaults to type if omitted
+                  description: Display label — defaults to vaccineName or type if omitted
+                fileKey:
+                  type: string
+                  description: (Mode 1) S3 key from POST /dogs/{dogId}/medical-record/upload
+                vaccineName:
+                  type: string
+                  description: (Mode 2) Vaccine name, e.g. "DHPP"
+                nextDueDate:
+                  type: string
+                  format: date
+                  description: (Mode 2) Next due date, e.g. "2026-04-01"
       responses:
         '201':
           description: Health record saved
@@ -495,7 +508,9 @@ paths:
                   recordId: { type: string }
                   type: { type: string }
                   title: { type: string }
-                  fileKey: { type: string }
+                  fileKey: { type: string, nullable: true }
+                  vaccineName: { type: string, nullable: true }
+                  nextDueDate: { type: string, nullable: true, format: date }
                   createdAt: { type: string, format: date-time }
         '403':
           description: Dog not owned by caller

@@ -75,6 +75,28 @@ describe('updateDog handler', () => {
     expect((res as { statusCode: number }).statusCode).toBe(400);
   });
 
+  it('updates spayedNeutered field', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Item: dogProfile })
+      .mockResolvedValueOnce({ Attributes: { ...dogProfile, spayedNeutered: 'yes_spayed' } });
+
+    const res = await handler(makeEvent('dog-123', { spayedNeutered: 'yes_spayed' }));
+    expect((res as { statusCode: number }).statusCode).toBe(200);
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.spayedNeutered).toBe('yes_spayed');
+  });
+
+  it('updates medicalConditions field', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Item: dogProfile })
+      .mockResolvedValueOnce({ Attributes: { ...dogProfile, medicalConditions: 'Hip dysplasia' } });
+
+    const res = await handler(makeEvent('dog-123', { medicalConditions: 'Hip dysplasia' }));
+    expect((res as { statusCode: number }).statusCode).toBe(200);
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.medicalConditions).toBe('Hip dysplasia');
+  });
+
   it('does not update planStatus or ownerId (not in allowed fields)', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: dogProfile })
