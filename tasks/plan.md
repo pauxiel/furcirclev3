@@ -1505,7 +1505,7 @@ curl -H "Authorization: Bearer $TOKEN" https://<api>/dev/bookings/$BOOKING_ID/to
 ---
 ---
 
-# FurCircle — Phase 5 Implementation Plan
+# FurCircle — Phase 8 Implementation Plan
 # Monthly Wellness Progression (Screen Two + Month Unlock)
 
 ## Context
@@ -1530,16 +1530,16 @@ When ALL cards in screen one are struck through → month is complete → next m
 ## Dependency Graph
 
 ```
-[P5-T1] Update Claude prompt — add stepId + steps[] to whatToDo items
+[P8-T1] Update Claude prompt — add stepId + steps[] to whatToDo items
     │
     ├──────────────────────────────────┐
     ▼                                  ▼
-[P5-T2] Fix getHomeScreen           [P5-T3] Step detail endpoint
+[P8-T2] Fix getHomeScreen           [P8-T3] Step detail endpoint
         actionSteps (include all           GET /dogs/{dogId}/plan/steps/{stepId}
         with completed flag)
     │
     ▼
-[P5-T4] Month completion auto-trigger
+[P8-T4] Month completion auto-trigger
         in logActivity (all tasks done → sfn.startExecution next month)
     │
     ▼
@@ -1548,7 +1548,7 @@ When ALL cards in screen one are struck through → month is complete → next m
 
 ---
 
-## Task P5-T1 — Update Claude Prompt: `stepId` + `steps[]` on `whatToDo`
+## Task P8-T1 — Update Claude Prompt: `stepId` + `steps[]` on `whatToDo`
 
 **What:** Change the Claude prompt in `src/lib/claude.ts` so each `whatToDo` item includes a unique `stepId` (slug) and a `steps[]` array of individual sub-tasks. Screen two reads from `steps[]`.
 
@@ -1592,7 +1592,7 @@ whatToDo: Array<{
 }>;
 ```
 
-**Important:** Existing plans in DynamoDB won't have `stepId` or `steps`. The new endpoint (P5-T3) must handle missing fields gracefully.
+**Important:** Existing plans in DynamoDB won't have `stepId` or `steps`. The new endpoint (P8-T3) must handle missing fields gracefully.
 
 **Acceptance criteria:**
 - [ ] `generatePlan()` returns `whatToDo` items each with `stepId` + `steps[]`
@@ -1609,7 +1609,7 @@ sls invoke local -f callClaude --stage dev --data '{"dogId":"test","breed":"Gold
 
 ---
 
-## Task P5-T2 — Fix `getHomeScreen` Action Steps (Include Completed + `completed` Flag)
+## Task P8-T2 — Fix `getHomeScreen` Action Steps (Include Completed + `completed` Flag)
 
 **What:** `getHomeScreen.ts` line 99 currently **filters out** completed action steps. This means completed cards disappear from screen one instead of showing a strikethrough. Fix: include ALL `whatToDo` items, each with a `completed` boolean.
 
@@ -1648,7 +1648,7 @@ GET /home → actionSteps should include all items, completed one has completed:
 
 ---
 
-## Task P5-T3 — Step Detail Endpoint: `GET /dogs/{dogId}/plan/steps/{stepId}`
+## Task P8-T3 — Step Detail Endpoint: `GET /dogs/{dogId}/plan/steps/{stepId}`
 
 **What:** New endpoint that powers screen two. Returns the full detail of a single `whatToDo` item — its description, sub-tasks (`steps[]`), and whether it's been marked complete.
 
@@ -1709,7 +1709,7 @@ GET /dogs/{dogId}/plan/steps/{stepId} → completed: true
 
 ---
 
-## Task P5-T4 — Month Completion Auto-Trigger in `logActivity`
+## Task P8-T4 — Month Completion Auto-Trigger in `logActivity`
 
 **What:** When the last task in the current month is marked `completed_task`, automatically trigger Step Functions to generate the next month's plan. Also marks the current plan record as `monthCompleted = true`.
 
@@ -1756,7 +1756,7 @@ const nextMonth = mon === 12
 
 ---
 
-## Checkpoint — Phase 5 E2E Smoke Test
+## Checkpoint — Phase 8 E2E Smoke Test
 
 **Full flow:**
 ```

@@ -456,9 +456,9 @@ All tasks above checked. E2E smoke test passes. Stripe webhook verified via Stri
 
 ---
 
-# FurCircle Phase 5 — Monthly Wellness Progression
+# FurCircle Phase 8 — Monthly Wellness Progression
 
-## Task P5-T1 — Update Claude Prompt (stepId + steps[])
+## Task P8-T1 — Update Claude Prompt (stepId + steps[])
 - [ ] Update `PlanData` interface in `src/lib/claude.ts` — add `stepId: string` and `steps[]` to `whatToDo` item type
 - [ ] Update Claude prompt — add `stepId` (kebab-case slug) and `steps[]` (2–4 items, each with `frequency`, `title`, `text`, optional `videoTopic`) to each `whatToDo` entry
 - [ ] Write unit test: verify `generatePlan` output has `stepId` + `steps[]` on all `whatToDo` items
@@ -466,7 +466,7 @@ All tasks above checked. E2E smoke test passes. Stripe webhook verified via Stri
 
 ---
 
-## Task P5-T2 — Fix `getHomeScreen` Action Steps
+## Task P8-T2 — Fix `getHomeScreen` Action Steps
 - [ ] Change line 99 of `getHomeScreen.ts`: replace `filter(!completed)` with `map(item => ({ ...item, completed }))`
 - [ ] Add `allComplete: completedCount === totalTasks` to the `plan` summary block in the response
 - [ ] Update `getHomeScreen.test.ts` — add test: completed step appears in `actionSteps` with `completed: true`
@@ -474,7 +474,7 @@ All tasks above checked. E2E smoke test passes. Stripe webhook verified via Stri
 
 ---
 
-## Task P5-T3 — Step Detail Endpoint
+## Task P8-T3 — Step Detail Endpoint
 - [ ] Write `src/functions/wellness/getPlanStep.ts`
   - [ ] GetItem dog → ownership check (403/404)
   - [ ] GetItem current plan
@@ -487,7 +487,7 @@ All tasks above checked. E2E smoke test passes. Stripe webhook verified via Stri
 
 ---
 
-## Task P5-T4 — Month Completion Auto-Trigger
+## Task P8-T4 — Month Completion Auto-Trigger
 - [ ] Add `states:StartExecution` IAM to `logActivity` function in `serverless.yml`
 - [ ] Update `src/functions/wellness/logActivity.ts`:
   - [ ] After writing activity + score update, count total `completedTexts` vs `plan.whatToDo.length`
@@ -500,15 +500,15 @@ All tasks above checked. E2E smoke test passes. Stripe webhook verified via Stri
 
 ---
 
-## Checkpoint — Phase 5 E2E Smoke Test
+## Checkpoint — Phase 8 E2E Smoke Test
 - [ ] All 11 smoke test steps pass (see plan.md checkpoint)
 - [ ] Completed action steps visible in home screen with `completed: true`
 - [ ] Step Functions fires on last task completion only
 - [ ] Next month plan generated with correct `ageMonthsAtPlan`
 - [ ] Zero Lambda errors in CloudWatch
-- [ ] Sign off Phase 5 ✅
+- [ ] Sign off Phase 8 ✅
 
 ---
 
-## Phase 5 Done Definition
+## Phase 8 Done Definition
 All tasks above checked. E2E smoke test passes. Completed tasks visible in home screen with strikethrough. Month auto-advances on last task completion. Zero Lambda errors.
