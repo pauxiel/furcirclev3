@@ -62,7 +62,7 @@ components:
         subscription:
           type: object
           properties:
-            plan: { type: string, enum: [welcome, protector, proactive] }
+            plan: { type: string, enum: [welcome, protector, proactive, complete_circle] }
             creditBalance: { type: integer }
             status: { type: string }
             currentPeriodEnd: { type: string, nullable: true }
@@ -143,12 +143,17 @@ components:
     SubscriptionPlan:
       type: object
       properties:
-        planId: { type: string, enum: [welcome, protector, proactive] }
+        key: { type: string, enum: [welcome, protector, proactive, complete_circle] }
         name: { type: string }
-        price: { type: number }
+        price: { type: integer, nullable: true, description: Price in cents (e.g. 1499 = $14.99). Null for coming-soon plans }
         currency: { type: string }
-        credits: { type: integer }
+        interval: { type: string, nullable: true, enum: [month, null] }
+        credits: { type: integer, nullable: true }
         features: { type: array, items: { type: string } }
+        stripePriceId: { type: string, nullable: true }
+        badge: { type: string, nullable: true, description: e.g. "Most Popular" or "Coming Soon" }
+        tagline: { type: string, nullable: true }
+        comingSoon: { type: boolean }
 
     Provider:
       type: object
@@ -747,7 +752,7 @@ paths:
               type: object
               required: [plan, paymentMethodId]
               properties:
-                plan: { type: string, enum: [protector, proactive] }
+                plan: { type: string, enum: [protector, proactive, complete_circle] }
                 paymentMethodId: { type: string, description: Stripe paymentMethodId }
       responses:
         '201':
