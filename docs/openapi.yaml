@@ -470,6 +470,43 @@ paths:
         '404':
           description: Dog not found
 
+  /dogs/{dogId}/health:
+    get:
+      tags: [Dogs]
+      summary: List health records for a dog
+      parameters:
+        - name: dogId
+          in: path
+          required: true
+          schema: { type: string }
+      security:
+        - cognitoAuth: []
+      responses:
+        '200':
+          description: Health records list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  records:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        dogId: { type: string }
+                        recordId: { type: string }
+                        type: { type: string }
+                        title: { type: string }
+                        fileKey: { type: string, nullable: true }
+                        vaccineName: { type: string, nullable: true }
+                        nextDueDate: { type: string, nullable: true, format: date }
+                        createdAt: { type: string, format: date-time }
+        '403':
+          description: Dog belongs to a different owner
+        '404':
+          description: Dog not found
+
   /dogs/{dogId}/health-records:
     post:
       tags: [Dogs]

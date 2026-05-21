@@ -198,6 +198,21 @@ functions:
           - dynamodb:PutItem
         Resource: !GetAtt FurcircleTable.Arn
 
+  listHealthRecords:
+    handler: src/functions/dogs/listHealthRecords.handler
+    events:
+      - httpApi:
+          path: /dogs/{dogId}/health
+          method: GET
+          authorizer:
+            name: cognitoAuthorizer
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+        Resource: !GetAtt FurcircleTable.Arn
+
   getCurrentPlan:
     handler: src/functions/dogs/getCurrentPlan.handler
     events:
