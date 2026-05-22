@@ -96,8 +96,9 @@ export const handler = async (
   );
 
   const whatToDo = plan['whatToDo'] as Array<{ stepId?: string; title?: string; text: string; videoTopic?: string | null; steps?: unknown[] }> ?? [];
+  const toSlug = (s: string) => s.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z-]/g, '');
   const actionSteps = whatToDo.map((item, idx) => ({
-    stepId: item.stepId ?? item.title?.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z-]/g, '') ?? `step-${idx}`,
+    stepId: item.stepId ?? (item.title ? toSlug(item.title) : null) ?? (item.videoTopic ? toSlug(item.videoTopic) : null) ?? `step-${idx}`,
     title: item.title ?? item.videoTopic ?? `Step ${idx + 1}`,
     text: item.text,
     completed: completedTexts.has(item.text),

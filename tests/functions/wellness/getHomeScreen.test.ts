@@ -247,4 +247,74 @@ describe('getHomeScreen handler', () => {
     expect(body.pillSummaries).toBeDefined();
     expect(body.pillSummaries.whatToDo).toMatch(/\d+ action/);
   });
+
+  // Regression: old plan data has no stepId/title — only videoTopic + text
+  it('derives stepId from videoTopic when stepId not stored (old plan data)', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [ownerProfile, ownerSubscription] } })
+      .mockResolvedValueOnce({ Items: [dogRecord] })
+      .mockResolvedValueOnce({ Item: planRecord })  // planRecord.whatToDo has no stepId/title
+      .mockResolvedValueOnce({ Items: [] });
+
+    const res = await handler(makeEvent());
+    const body = JSON.parse((res as { body: string }).body);
+    const steps = body.actionSteps as Array<{ stepId: string; title: string; text: string; completed: boolean }>;
+
+    // First item has videoTopic: 'puppy basics' → derived stepId
+    expect(steps[0].stepId).toBe('puppy-basics');
+    expect(steps[0].title).toBe('puppy basics');
+  });
+
+  it('falls back to step-N stepId when videoTopic is null (old plan data)', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [ownerProfile, ownerSubscription] } })
+      .mockResolvedValueOnce({ Items: [dogRecord] })
+      .mockResolvedValueOnce({ Item: planRecord })
+      .mockResolvedValueOnce({ Items: [] });
+
+    const res = await handler(makeEvent());
+    const body = JSON.parse((res as { body: string }).body);
+    const steps = body.actionSteps as Array<{ stepId: string; title: string }>;
+
+    // Second item has videoTopic: null → falls back to step-1
+    expect(steps[1].stepId).toBe('step-1');
+    expect(steps[1].title).toBe('Step 2');
+  });
+
+  it('actionSteps shape is exactly {stepId, title, text, completed} — no videoTopic or steps leaked', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [ownerProfile, ownerSubscription] } })
+      .mockResolvedValueOnce({ Items: [dogRecord] })
+      .mockResolvedValueOnce({ Item: planRecord })
+      .mockResolvedValueOnce({ Items: [] });
+
+    const res = await handler(makeEvent());
+    const body = JSON.parse((res as { body: string }).body);
+    const step = body.actionSteps[0] as Record<string, unknown>;
+
+    expect(Object.keys(step).sort()).toEqual(['completed', 'stepId', 'text', 'title']);
+    expect(step['videoTopic']).toBeUndefined();
+    expect(step['steps']).toBeUndefined();
+  });
+
+  it('uses stored stepId/title when present (new plan data)', async () => {
+    const newFormatPlan = {
+      ...planRecord,
+      whatToDo: [
+        { stepId: 'basic-commands', title: 'Basic Commands', text: 'Teach sit and stay.', videoTopic: 'puppy basics', steps: [] },
+      ],
+    };
+    mockDocClientSend
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [ownerProfile, ownerSubscription] } })
+      .mockResolvedValueOnce({ Items: [dogRecord] })
+      .mockResolvedValueOnce({ Item: newFormatPlan })
+      .mockResolvedValueOnce({ Items: [] });
+
+    const res = await handler(makeEvent());
+    const body = JSON.parse((res as { body: string }).body);
+    const step = body.actionSteps[0] as { stepId: string; title: string };
+
+    expect(step.stepId).toBe('basic-commands');
+    expect(step.title).toBe('Basic Commands');
+  });
 });

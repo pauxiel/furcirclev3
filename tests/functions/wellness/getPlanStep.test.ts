@@ -116,4 +116,68 @@ describe('getPlanStep handler', () => {
     const body = JSON.parse((res as { body: string }).body);
     expect(body.error).toBe('DOG_NOT_FOUND');
   });
+
+  // Regression: old plan data has no stepId stored — frontend receives step-0, step-1 etc from /home
+  it('resolves step-0 for old plan data without stored stepId (videoTopic fallback)', async () => {
+    const oldFormatPlan = {
+      PK: 'DOG#dog-123',
+      SK: 'PLAN#2026-05',
+      month: '2026-05',
+      whatToDo: [
+        { text: 'Provide ultra-soft orthopedic bedding throughout the home.', videoTopic: 'Setting up comfort stations for senior dogs' },
+        { text: 'Schedule veterinary check-ups every 3 months.', videoTopic: null },
+      ],
+    };
+    mockDocClientSend
+      .mockResolvedValueOnce({ Item: dogProfile })
+      .mockResolvedValueOnce({ Item: oldFormatPlan })
+      .mockResolvedValueOnce({ Items: [] });
+
+    const res = await handler(makeEvent('dog-123', 'setting-up-comfort-stations-for-senior-dogs'));
+    expect((res as { statusCode: number }).statusCode).toBe(200);
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.stepId).toBe('setting-up-comfort-stations-for-senior-dogs');
+  });
+
+  it('resolves step-1 for old plan item where videoTopic is null', async () => {
+    const oldFormatPlan = {
+      PK: 'DOG#dog-123',
+      SK: 'PLAN#2026-05',
+      month: '2026-05',
+      whatToDo: [
+        { text: 'First task.', videoTopic: 'some topic' },
+        { text: 'Second task with no video.', videoTopic: null },
+      ],
+    };
+    mockDocClientSend
+      .mockResolvedValueOnce({ Item: dogProfile })
+      .mockResolvedValueOnce({ Item: oldFormatPlan })
+      .mockResolvedValueOnce({ Items: [] });
+
+    const res = await handler(makeEvent('dog-123', 'step-1'));
+    expect((res as { statusCode: number }).statusCode).toBe(200);
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.stepId).toBe('step-1');
+    expect(body.text).toBe('Second task with no video.');
+  });
+
+  it('derives title from videoTopic when title not stored (old plan data)', async () => {
+    const oldFormatPlan = {
+      PK: 'DOG#dog-123',
+      SK: 'PLAN#2026-05',
+      month: '2026-05',
+      whatToDo: [
+        { text: 'Do the thing.', videoTopic: 'Puppy Basics' },
+      ],
+    };
+    mockDocClientSend
+      .mockResolvedValueOnce({ Item: dogProfile })
+      .mockResolvedValueOnce({ Item: oldFormatPlan })
+      .mockResolvedValueOnce({ Items: [] });
+
+    const res = await handler(makeEvent('dog-123', 'puppy-basics'));
+    expect((res as { statusCode: number }).statusCode).toBe(200);
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.title).toBe('Puppy Basics');
+  });
 });
