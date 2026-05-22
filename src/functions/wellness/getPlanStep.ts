@@ -50,8 +50,13 @@ export const handler = async (
   if (!plan) return error('PLAN_NOT_FOUND', 'No plan for current month', 404);
 
   const whatToDo = (plan['whatToDo'] as WhatToDoItem[]) ?? [];
-  const stepItem = whatToDo.find((item) => item.stepId === stepId);
-  if (!stepItem) return error('STEP_NOT_FOUND', 'Step not found in current plan', 404);
+
+  const deriveStepId = (item: WhatToDoItem, idx: number) =>
+    item.stepId ?? item.title?.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z-]/g, '') ?? `step-${idx}`;
+
+  const stepIdx = whatToDo.findIndex((item, idx) => deriveStepId(item, idx) === stepId);
+  if (stepIdx === -1) return error('STEP_NOT_FOUND', 'Step not found in current plan', 404);
+  const stepItem = whatToDo[stepIdx]!;
 
   const activities = activitiesResult.Items ?? [];
   const completedTexts = new Set(
@@ -59,8 +64,8 @@ export const handler = async (
   );
 
   return success({
-    stepId: stepItem.stepId,
-    title: stepItem.title,
+    stepId: deriveStepId(stepItem, stepIdx),
+    title: stepItem.title ?? stepItem.videoTopic ?? `Step ${stepIdx + 1}`,
     text: stepItem.text,
     completed: completedTexts.has(stepItem.text),
     steps: stepItem.steps ?? [],
