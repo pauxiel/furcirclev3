@@ -248,6 +248,31 @@ describe('getHomeScreen handler', () => {
     expect(body.pillSummaries.whatToDo).toMatch(/\d+ action/);
   });
 
+  it('dog.photoUrl is null when not set on dog record', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [ownerProfile, ownerSubscription] } })
+      .mockResolvedValueOnce({ Items: [dogRecord] })  // dogRecord has no photoUrl field
+      .mockResolvedValueOnce({ Item: planRecord })
+      .mockResolvedValueOnce({ Items: [] });
+
+    const res = await handler(makeEvent());
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.dog.photoUrl).toBeNull();
+  });
+
+  it('dog.photoUrl is returned when set', async () => {
+    const dogWithPhoto = { ...dogRecord, photoUrl: 'https://cdn.furcircle.com/dogs/dog-123/profile.jpeg' };
+    mockDocClientSend
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [ownerProfile, ownerSubscription] } })
+      .mockResolvedValueOnce({ Items: [dogWithPhoto] })
+      .mockResolvedValueOnce({ Item: planRecord })
+      .mockResolvedValueOnce({ Items: [] });
+
+    const res = await handler(makeEvent());
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.dog.photoUrl).toBe('https://cdn.furcircle.com/dogs/dog-123/profile.jpeg');
+  });
+
   // Regression: old plan data has no stepId/title — only videoTopic + text
   it('derives stepId from videoTopic when stepId not stored (old plan data)', async () => {
     mockDocClientSend
