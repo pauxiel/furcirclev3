@@ -20,15 +20,8 @@ export const handler = async (
   const dogId = event.pathParameters?.['dogId'];
   if (!dogId) return error('VALIDATION_ERROR', 'dogId required', 400);
 
-  let body: Record<string, unknown>;
-  try {
-    body = JSON.parse(event.body ?? '{}') as Record<string, unknown>;
-  } catch {
-    return error('VALIDATION_ERROR', 'Invalid JSON body', 400);
-  }
-
-  const { contentType } = body;
-  if (!contentType || typeof contentType !== 'string') {
+  const contentType = event.queryStringParameters?.['contentType'];
+  if (!contentType) {
     return error('VALIDATION_ERROR', 'contentType is required', 400);
   }
 
