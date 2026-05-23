@@ -170,7 +170,7 @@ functions:
     events:
       - httpApi:
           path: /dogs/{dogId}/medical-record/upload
-          method: POST
+          method: GET
           authorizer:
             name: cognitoAuthorizer
     iamRoleStatements:
