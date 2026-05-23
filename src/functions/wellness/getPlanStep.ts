@@ -7,10 +7,10 @@ import type { PlanStep } from '../../lib/claude';
 
 interface WhatToDoItem {
   stepId?: string;
-  title: string;
+  title?: string;
   text: string;
   steps?: PlanStep[];
-  videoTopic?: string;
+  videoTopic?: string | null;
 }
 
 export const handler = async (
@@ -51,8 +51,9 @@ export const handler = async (
 
   const whatToDo = (plan['whatToDo'] as WhatToDoItem[]) ?? [];
 
+  const toSlug = (s: string) => s.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z-]/g, '');
   const deriveStepId = (item: WhatToDoItem, idx: number) =>
-    item.stepId ?? item.title?.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z-]/g, '') ?? `step-${idx}`;
+    item.stepId ?? (item.title ? toSlug(item.title) : null) ?? (item.videoTopic ? toSlug(item.videoTopic) : null) ?? `step-${idx}`;
 
   const stepIdx = whatToDo.findIndex((item, idx) => deriveStepId(item, idx) === stepId);
   if (stepIdx === -1) return error('STEP_NOT_FOUND', 'Step not found in current plan', 404);
@@ -65,7 +66,7 @@ export const handler = async (
 
   return success({
     stepId: deriveStepId(stepItem, stepIdx),
-    title: stepItem.title ?? stepItem.videoTopic ?? `Step ${stepIdx + 1}`,
+    title: stepItem.title ?? (stepItem.videoTopic ?? `Step ${stepIdx + 1}`),
     text: stepItem.text,
     completed: completedTexts.has(stepItem.text),
     steps: stepItem.steps ?? [],

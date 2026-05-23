@@ -17,11 +17,8 @@ export const handler = async (
     return error('VALIDATION_ERROR', 'Invalid JSON body', 400);
   }
 
-  const { recordId, fileKey, type, title, vaccineName, nextDueDate } = body;
+  const { fileKey, type, title, vaccineName, nextDueDate } = body;
 
-  if (!recordId || typeof recordId !== 'string') {
-    return error('VALIDATION_ERROR', 'recordId is required', 400);
-  }
   if (!type || typeof type !== 'string') {
     return error('VALIDATION_ERROR', 'type is required', 400);
   }
@@ -41,6 +38,7 @@ export const handler = async (
   if (!dog) return error('DOG_NOT_FOUND', 'Dog not found', 404);
   if (dog['ownerId'] !== userId) return error('FORBIDDEN', 'Access denied', 403);
 
+  const recordId = crypto.randomUUID();
   const now = new Date().toISOString();
   const item: Record<string, unknown> = {
     PK: `DOG#${dogId}`,
