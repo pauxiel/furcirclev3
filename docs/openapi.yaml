@@ -435,7 +435,7 @@ paths:
                   photoUrl: { type: string, description: Full CloudFront CDN URL — save this and use directly as image source }
 
   /dogs/{dogId}/medical-record/upload:
-    post:
+    get:
       tags: [Dogs]
       summary: Get presigned S3 URL for medical record file upload
       parameters:
@@ -443,27 +443,21 @@ paths:
           in: path
           required: true
           schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [contentType]
-              properties:
-                contentType:
-                  type: string
-                  enum: [image/jpeg, image/jpg, image/png, image/webp, application/pdf]
+        - name: contentType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [image/jpeg, image/jpg, image/png, image/webp, application/pdf]
       responses:
         '200':
-          description: Presigned upload URL (valid 300s). PUT file bytes directly to uploadUrl, then call POST /dogs/{dogId}/health-records with the returned recordId and fileKey.
+          description: Presigned upload URL (valid 300s). PUT file bytes directly to uploadUrl, then call POST /dogs/{dogId}/health-records with the returned fileKey.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   uploadUrl: { type: string }
-                  recordId: { type: string, format: uuid }
                   fileKey: { type: string }
         '403':
           description: Dog not owned by caller
@@ -513,7 +507,7 @@ paths:
       summary: Save health record — file upload (Mode 1) or manual entry (Mode 2)
       description: |
         Two modes:
-        - **Mode 1 (file upload)**: provide `fileKey` from POST /dogs/{dogId}/medical-record/upload
+        - **Mode 1 (file upload)**: provide `fileKey` from GET /dogs/{dogId}/medical-record/upload
         - **Mode 2 (manual entry)**: provide `vaccineName` + `nextDueDate` — no file required
 
         At least one of `fileKey` or `nextDueDate` must be present.
@@ -528,12 +522,8 @@ paths:
           application/json:
             schema:
               type: object
-              required: [recordId, type]
+              required: [type]
               properties:
-                recordId:
-                  type: string
-                  format: uuid
-                  description: Client-generated UUID for this record
                 type:
                   type: string
                   description: Record category (e.g. vaccination, vet_record, lab_result)
@@ -542,7 +532,7 @@ paths:
                   description: Display label — defaults to vaccineName or type if omitted
                 fileKey:
                   type: string
-                  description: (Mode 1) S3 key from POST /dogs/{dogId}/medical-record/upload
+                  description: (Mode 1) S3 key from GET /dogs/{dogId}/medical-record/upload
                 vaccineName:
                   type: string
                   description: (Mode 2) Vaccine name, e.g. "DHPP"
