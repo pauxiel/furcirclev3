@@ -1,0 +1,21 @@
+{
+  "version": "2.0",
+  "routeKey": "POST /assessments",
+  "rawPath": "/assessments",
+  "requestContext": {
+    "authorizer": {
+      "jwt": {
+        "claims": {
+          "sub": "REPLACE_WITH_OWNER_ID"
+        },
+        "scopes": []
+      }
+    },
+    "http": {
+      "method": "POST",
+      "path": "/assessments"
+    }
+  },
+  "body": "{\"vetId\":\"REPLACE_WITH_BEHAVIOURIST_ID\",\"dogId\":\"REPLACE_WITH_DOG_ID\",\"description\":\"Buddy has been showing signs of separation anxiety since we moved apartments last month and barks for hours.\",\"mediaUrls\":[\"https://furcircle-dog-photos-dev.s3.amazonaws.com/assessments/sample/video1.mp4\"]}",
+  "isBase64Encoded": false
+}
