@@ -15,6 +15,7 @@ provider:
     BUCKET_NAME: !Ref DogPhotosBucket
     CLOUDFRONT_URL: !Sub https://${DogPhotosDistribution.DomainName}
     SNS_TOPIC_ARN: !Ref NotificationsTopic
+    FROM_EMAIL: ${param:fromEmail, 'no-reply@furcircle.app'}
     STATE_MACHINE_ARN: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:furcircle-generate-plan-${self:provider.stage}
     ANTHROPIC_API_KEY_SSM: /furcircle/${self:provider.stage}/anthropic/apiKey
     # USER_POOL_ID and USER_POOL_CLIENT_ID intentionally omitted from global env
@@ -1261,6 +1262,22 @@ functions:
         Action: [dynamodb:GetItem]
         Resource: !GetAtt FurcircleTable.Arn
 
+  sendProviderEmail:
+    handler: src/functions/notifications/sendProviderEmail.handler
+    events:
+      - sns:
+          arn: !Ref NotificationsTopic
+          topicName: furcircle-notifications-${self:provider.stage}
+    environment:
+      TABLE_NAME: !Ref FurcircleTable
+    iamRoleStatements:
+      - Effect: Allow
+        Action: [dynamodb:GetItem, dynamodb:BatchGetItem]
+        Resource: !GetAtt FurcircleTable.Arn
+      - Effect: Allow
+        Action: [ses:SendEmail]
+        Resource: '*'
+
 build:
   esbuild:
     bundle: true
@@ -1443,6 +1460,14 @@ resources:
       Type: AWS::SNS::Topic
       Properties:
         TopicName: furcircle-notifications-${self:provider.stage}
+
+    # Provider-facing email sender identity. For an email-address identity SES
+    # sends a verification link on create; the address must be confirmed before
+    # sends succeed. In the SES sandbox, recipient addresses must also be verified.
+    SenderEmailIdentity:
+      Type: AWS::SES::EmailIdentity
+      Properties:
+        EmailIdentity: ${param:fromEmail, 'no-reply@furcircle.app'}
 
     # Step Functions role uses wildcard Lambda ARN to avoid circular deps
     StepFunctionsRole:
