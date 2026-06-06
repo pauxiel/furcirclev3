@@ -4,7 +4,7 @@ import { docClient } from '../../lib/dynamodb';
 import { success, error } from '../../lib/response';
 import { getUserId } from '../../lib/auth';
 
-const VALID_TYPES = ['behaviourist', 'nutritionist'];
+const VALID_TYPES = ['veterinarian', 'behaviourist', 'nutritionist'];
 
 export const handler = async (
   event: APIGatewayProxyEventV2WithJWTAuthorizer,
@@ -14,7 +14,7 @@ export const handler = async (
   const type = event.queryStringParameters?.['type'];
 
   if (!type || !VALID_TYPES.includes(type)) {
-    return error('INVALID_TYPE', 'type must be behaviourist or nutritionist', 400);
+    return error('INVALID_TYPE', 'type must be veterinarian, behaviourist or nutritionist', 400);
   }
 
   const providersResult = await docClient.send(
@@ -28,6 +28,24 @@ export const handler = async (
   );
 
   const vets = providersResult.Items ?? [];
+
+  // Veterinarians are reached through Ask-a-Vet messaging, not bookings, so
+  // they carry no subscription/assessment/canBook coupling — return the plain
+  // rating-sorted list (already sorted by the GSI3 query).
+  if (type === 'veterinarian') {
+    const providers = vets.map((vet) => ({
+      vetId: vet['vetId'],
+      firstName: vet['firstName'],
+      lastName: vet['lastName'],
+      providerType: vet['providerType'],
+      specialisation: vet['specialisation'] ?? null,
+      photoUrl: vet['photoUrl'] ?? null,
+      rating: vet['rating'],
+      reviewCount: vet['reviewCount'],
+      isActive: vet['isActive'],
+    }));
+    return success({ providers });
+  }
 
   if (vets.length === 0) {
     return success({ providers: [] });

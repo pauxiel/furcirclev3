@@ -102,4 +102,35 @@ describe('listProviders handler', () => {
     const body = JSON.parse(res.body);
     expect(body.providers[0].canBook).toBe(false);
   });
+
+  it('lists veterinarians without booking/assessment coupling', async () => {
+    const vetVet = {
+      ...vetRow,
+      providerType: 'veterinarian',
+      GSI3PK: 'PROVIDER_TYPE#veterinarian',
+      GSI3SK: 'RATING#4.8#VET#vet-123',
+      rating: 4.8,
+    };
+    mockDocClientSend.mockResolvedValueOnce({ Items: [vetVet] }); // GSI3 query only
+
+    const res = (await handler(makeEvent({ type: 'veterinarian' }))) as Result;
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.providers).toHaveLength(1);
+    expect(body.providers[0].vetId).toBe('vet-123');
+    expect(body.providers[0].providerType).toBe('veterinarian');
+    expect(body.providers[0].canBook).toBeUndefined();
+    expect(body.providers[0].assessmentStatus).toBeUndefined();
+    // no subscription or assessment lookups for vets
+    expect(mockDocClientSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns empty list when no veterinarians and makes no extra lookups', async () => {
+    mockDocClientSend.mockResolvedValueOnce({ Items: [] });
+
+    const res = (await handler(makeEvent({ type: 'veterinarian' }))) as Result;
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).providers).toEqual([]);
+    expect(mockDocClientSend).toHaveBeenCalledTimes(1);
+  });
 });
