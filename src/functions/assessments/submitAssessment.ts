@@ -40,7 +40,8 @@ export const handler = async (
     }
   }
 
-  // Check for existing pending/approved assessment for this owner+vet
+  // Anti-spam: block a repeat submission to the same behaviourist within 24h.
+  // The behaviourist flow has no approve/reject lifecycle — submissions are terminal.
   const existing = await docClient.send(
     new QueryCommand({
       TableName: table,
@@ -55,8 +56,11 @@ export const handler = async (
   );
 
   const existingItem = existing.Items?.[0];
-  if (existingItem && (existingItem['status'] === 'pending' || existingItem['status'] === 'approved')) {
-    return error('ASSESSMENT_EXISTS', 'An active assessment already exists for this provider', 409);
+  if (existingItem && existingItem['status'] === 'submitted') {
+    const ageMs = Date.now() - new Date(existingItem['createdAt'] as string).getTime();
+    if (ageMs < 24 * 60 * 60 * 1000) {
+      return error('ASSESSMENT_EXISTS', 'You already sent a request to this behaviourist recently', 409);
+    }
   }
 
   const assessmentId = uuidv4();
@@ -71,7 +75,7 @@ export const handler = async (
         GSI1PK: `OWNER#${userId}`,
         GSI1SK: `ASSESSMENT#${vetId}`,
         GSI2PK: `VET#${vetId}`,
-        GSI2SK: `ASSESSMENT#pending#${now}`,
+        GSI2SK: `ASSESSMENT#submitted#${now}`,
         assessmentId,
         ownerId: userId,
         vetId,
@@ -79,25 +83,25 @@ export const handler = async (
         providerType: 'behaviourist',
         description,
         mediaUrls: urls,
-        status: 'pending',
-        vetResponse: null,
+        status: 'submitted',
         createdAt: now,
-        reviewedAt: null,
       },
     }),
   );
 
+  // Email the behaviourist the owner's details (recipient + body resolved in
+  // sendProviderEmail from the ids below). Push consumer ignores this subject.
   try {
     await sns.send(
       new PublishCommand({
         TopicArn: topicArn,
-        Subject: 'assessment_submitted',
-        Message: JSON.stringify({ vetId, assessmentId, ownerId: userId, dogId }),
+        Subject: 'behaviourist_intake',
+        Message: JSON.stringify({ vetId, assessmentId, ownerId: userId, dogId, description, mediaUrls: urls }),
       }),
     );
   } catch (err) {
     console.error('SNS publish failed (non-fatal):', err);
   }
 
-  return success({ assessmentId, vetId, dogId, status: 'pending', createdAt: now }, 201);
+  return success({ assessmentId, vetId, dogId, status: 'submitted', createdAt: now }, 201);
 };

@@ -39,7 +39,8 @@ const validBody = {
 
 describe('submitAssessment handler', () => {
   beforeEach(() => {
-    jest.resetAllMocks();
+    mockDocClientSend.mockReset();
+    mockSnsSend.mockReset();
     process.env['TABLE_NAME'] = 'furcircle-test';
     process.env['SNS_TOPIC_ARN'] = 'arn:aws:sns:us-east-1:123:furcircle-test';
   });
@@ -65,9 +66,9 @@ describe('submitAssessment handler', () => {
     expect(JSON.parse(res.body).error).toBe('VALIDATION_ERROR');
   });
 
-  it('returns 409 when pending or approved assessment already exists', async () => {
+  it('returns 409 when a recent submission to the same behaviourist exists', async () => {
     mockDocClientSend.mockResolvedValueOnce({
-      Items: [{ assessmentId: 'existing', status: 'pending' }],
+      Items: [{ assessmentId: 'existing', status: 'submitted', createdAt: new Date().toISOString() }],
     });
 
     const res = (await handler(makeEvent(validBody))) as Result;
@@ -75,7 +76,17 @@ describe('submitAssessment handler', () => {
     expect(JSON.parse(res.body).error).toBe('ASSESSMENT_EXISTS');
   });
 
-  it('returns 201 and creates ASSESSMENT record with status=pending', async () => {
+  it('allows resubmission when the prior submission is older than 24h', async () => {
+    const old = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    mockDocClientSend
+      .mockResolvedValueOnce({ Items: [{ assessmentId: 'old', status: 'submitted', createdAt: old }] })
+      .mockResolvedValueOnce({}); // PutItem
+
+    const res = (await handler(makeEvent(validBody))) as Result;
+    expect(res.statusCode).toBe(201);
+  });
+
+  it('returns 201 and creates a terminal ASSESSMENT record with status=submitted', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Items: [] })  // GSI1 check — no existing
       .mockResolvedValueOnce({});             // PutItem
@@ -84,7 +95,7 @@ describe('submitAssessment handler', () => {
     expect(res.statusCode).toBe(201);
     const body = JSON.parse(res.body);
     expect(body.assessmentId).toBe('assess-uuid-123');
-    expect(body.status).toBe('pending');
+    expect(body.status).toBe('submitted');
     expect(body.vetId).toBe('vet-123');
 
     const putCall = mockDocClientSend.mock.calls[1][0];
@@ -94,7 +105,27 @@ describe('submitAssessment handler', () => {
     expect(item.GSI1PK).toBe('OWNER#owner-123');
     expect(item.GSI1SK).toBe('ASSESSMENT#vet-123');
     expect(item.GSI2PK).toBe('VET#vet-123');
-    expect(item.status).toBe('pending');
+    expect(item.GSI2SK).toMatch(/^ASSESSMENT#submitted#/);
+    expect(item.status).toBe('submitted');
+    // no approve/reject lifecycle fields
+    expect(item.vetResponse).toBeUndefined();
+    expect(item.reviewedAt).toBeUndefined();
+  });
+
+  it('publishes a behaviourist_intake notification carrying owner details', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Items: [] })
+      .mockResolvedValueOnce({});
+
+    await handler(makeEvent(validBody));
+
+    const snsCall = mockSnsSend.mock.calls[0][0];
+    expect(snsCall.Subject).toBe('behaviourist_intake');
+    const msg = JSON.parse(snsCall.Message);
+    expect(msg.ownerId).toBe('owner-123');
+    expect(msg.vetId).toBe('vet-123');
+    expect(msg.dogId).toBe('dog-123');
+    expect(msg.description).toContain('separation anxiety');
   });
 
   it('returns 201 even when SNS publish fails', async () => {
