@@ -78,4 +78,21 @@ describe('sendProviderEmail', () => {
       handler(makeSnsEvent('behaviourist_intake', intakePayload) as any),
     ).resolves.not.toThrow();
   });
+
+  it('fans out a question_broadcast email to every active vet with an address', async () => {
+    mockDocClientSend.mockResolvedValueOnce({
+      Items: [
+        { vetId: 'v1', email: 'v1@vet.com', isActive: true },
+        { vetId: 'v2', email: null, isActive: true },
+        { vetId: 'v3', email: 'v3@vet.com', isActive: true },
+      ],
+    });
+
+    await handler(makeSnsEvent('question_broadcast', { threadId: 't1', dogName: 'Buddy' }) as any);
+
+    expect(mockSendEmail).toHaveBeenCalledTimes(2);
+    const recipients = mockSendEmail.mock.calls.map((c) => c[0].to).sort();
+    expect(recipients).toEqual(['v1@vet.com', 'v3@vet.com']);
+    expect(mockSendEmail.mock.calls[0][0].text).toContain('Buddy');
+  });
 });

@@ -25,9 +25,20 @@ const threadMeta = {
   GSI2PK: 'VET#vet-123', GSI2SK: 'THREAD#open#2026-04-15T10:00:00Z',
 };
 
+const unassignedMeta = {
+  PK: 'THREAD#thread-2', SK: 'METADATA',
+  threadId: 'thread-2', type: 'ask_a_vet', status: 'unassigned',
+  ownerId: 'owner-2', vetId: null, dogId: 'dog-2',
+  createdAt: '2026-04-16T09:00:00Z',
+  GSI2PK: 'QUEUE#ask_a_vet', GSI2SK: 'THREAD#unassigned#2026-04-16T09:00:00Z',
+};
+
 const ownerProfile = { PK: 'OWNER#owner-1', SK: 'PROFILE', userId: 'owner-1', firstName: 'Joshua', lastName: 'Smith' };
 const dogProfile = { PK: 'DOG#dog-1', SK: 'PROFILE', dogId: 'dog-1', name: 'Buddy', breed: 'Golden Retriever', ageMonths: 3 };
 const ownerSub = { PK: 'OWNER#owner-1', SK: 'SUBSCRIPTION', plan: 'proactive' };
+
+const owner2 = { PK: 'OWNER#owner-2', SK: 'PROFILE', userId: 'owner-2', firstName: 'Mia', lastName: 'Lee' };
+const dog2 = { PK: 'DOG#dog-2', SK: 'PROFILE', dogId: 'dog-2', name: 'Rex', breed: 'Beagle', ageMonths: 8 };
 
 const lastMsg = {
   PK: 'THREAD#thread-1', SK: 'MSG#1713178800000#msg-1',
@@ -40,19 +51,21 @@ describe('vetListThreads handler', () => {
     process.env['TABLE_NAME'] = 'furcircle-test';
   });
 
-  it('returns empty list when no threads', async () => {
-    mockDocClientSend.mockResolvedValueOnce({ Items: [] });
+  it('returns empty list when no own threads and no queue', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Items: [] })  // own (VET#) query
+      .mockResolvedValueOnce({ Items: [] }); // shared queue query
     const res = (await handler(makeEvent())) as Result;
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).threads).toHaveLength(0);
   });
 
-  it('returns threads enriched with owner, dog, lastMessage, isPriority', async () => {
-    mockDocClientSend.mockResolvedValueOnce({ Items: [threadMeta] });
-    mockDocClientSend.mockResolvedValueOnce({
-      Responses: { 'furcircle-test': [ownerProfile, dogProfile, ownerSub] },
-    });
-    mockDocClientSend.mockResolvedValueOnce({ Items: [lastMsg] });
+  it('returns own threads enriched with owner, dog, lastMessage, isPriority', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Items: [threadMeta] }) // own
+      .mockResolvedValueOnce({ Items: [] })           // queue
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [ownerProfile, dogProfile, ownerSub] } })
+      .mockResolvedValueOnce({ Items: [lastMsg] });
 
     const res = (await handler(makeEvent())) as Result;
     expect(res.statusCode).toBe(200);
@@ -65,13 +78,42 @@ describe('vetListThreads handler', () => {
   });
 
   it('isPriority false for welcome plan owner', async () => {
-    mockDocClientSend.mockResolvedValueOnce({ Items: [threadMeta] });
-    mockDocClientSend.mockResolvedValueOnce({
-      Responses: { 'furcircle-test': [ownerProfile, dogProfile, { ...ownerSub, plan: 'welcome' }] },
-    });
-    mockDocClientSend.mockResolvedValueOnce({ Items: [] });
+    mockDocClientSend
+      .mockResolvedValueOnce({ Items: [threadMeta] })
+      .mockResolvedValueOnce({ Items: [] })
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [ownerProfile, dogProfile, { ...ownerSub, plan: 'welcome' }] } })
+      .mockResolvedValueOnce({ Items: [] });
 
     const res = (await handler(makeEvent())) as Result;
     expect(JSON.parse(res.body).threads[0].isPriority).toBe(false);
+  });
+
+  it('includes unassigned broadcast questions from the shared queue', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Items: [] })             // own — none
+      .mockResolvedValueOnce({ Items: [unassignedMeta] }) // queue — one unclaimed
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [owner2, dog2] } })
+      .mockResolvedValueOnce({ Items: [] });
+
+    const res = (await handler(makeEvent())) as Result;
+    const body = JSON.parse(res.body);
+    expect(body.threads).toHaveLength(1);
+    expect(body.threads[0].threadId).toBe('thread-2');
+    expect(body.threads[0].status).toBe('unassigned');
+  });
+
+  it('does not query the shared queue when filtering by a concrete status', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Items: [threadMeta] }) // own only
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [ownerProfile, dogProfile, ownerSub] } })
+      .mockResolvedValueOnce({ Items: [lastMsg] });
+
+    const res = (await handler(makeEvent({ status: 'open' }))) as Result;
+    expect(res.statusCode).toBe(200);
+    const firstQuery = mockDocClientSend.mock.calls[0][0];
+    const input = (firstQuery.input ?? firstQuery) as Record<string, any>;
+    expect(input.ExpressionAttributeValues[':pk']).toBe('VET#vet-123');
+    // only own query + batchGet + lastMsg = 3 calls (no queue query)
+    expect(mockDocClientSend).toHaveBeenCalledTimes(3);
   });
 });

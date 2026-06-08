@@ -2,6 +2,7 @@ import type { SNSEvent } from 'aws-lambda';
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../../lib/dynamodb';
 import { sendEmail } from '../../lib/email';
+import { listActiveVeterinarians } from '../../lib/providers';
 
 type EmailPayload = Record<string, unknown>;
 
@@ -93,6 +94,24 @@ async function resolveEmail(
   }
 }
 
+async function broadcastQuestionToVets(payload: EmailPayload, table: string): Promise<void> {
+  const dogName = (payload['dogName'] as string) ?? 'a dog';
+  const vets = await listActiveVeterinarians(table);
+  const subject = `New Ask-a-Vet question about ${dogName}`;
+  const text = `A FurCircle owner has asked a question about ${dogName}. Open the FurCircle vet app to read and answer it — the first vet to reply takes the case.`;
+  const html = `<p>A FurCircle owner has asked a question about <strong>${esc(dogName)}</strong>.</p><p>Open the FurCircle vet app to read and answer it — the first vet to reply takes the case.</p>`;
+
+  await Promise.all(
+    vets
+      .filter((v) => v.email)
+      .map((v) =>
+        sendEmail({ to: v.email as string, subject, html, text }).catch((err) =>
+          console.error(`Broadcast email failed for vet=${v.vetId}:`, err),
+        ),
+      ),
+  );
+}
+
 export const handler = async (event: SNSEvent): Promise<void> => {
   const table = process.env['TABLE_NAME']!;
 
@@ -101,6 +120,13 @@ export const handler = async (event: SNSEvent): Promise<void> => {
     const payload = JSON.parse(record.Sns.Message) as EmailPayload;
 
     try {
+      // Ask-a-Vet broadcast is a fan-out (many recipients), handled separately
+      // from the single-recipient resolveEmail path.
+      if (subject === 'question_broadcast') {
+        await broadcastQuestionToVets(payload, table);
+        continue;
+      }
+
       const email = await resolveEmail(subject, payload, table);
       if (!email) continue;
       await sendEmail(email);

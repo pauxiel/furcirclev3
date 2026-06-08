@@ -1259,8 +1259,10 @@ functions:
       TABLE_NAME: !Ref FurcircleTable
     iamRoleStatements:
       - Effect: Allow
-        Action: [dynamodb:GetItem]
-        Resource: !GetAtt FurcircleTable.Arn
+        Action: [dynamodb:GetItem, dynamodb:Query]
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub ${FurcircleTable.Arn}/index/GSI3
 
   sendProviderEmail:
     handler: src/functions/notifications/sendProviderEmail.handler
@@ -1272,8 +1274,10 @@ functions:
       TABLE_NAME: !Ref FurcircleTable
     iamRoleStatements:
       - Effect: Allow
-        Action: [dynamodb:GetItem, dynamodb:BatchGetItem]
-        Resource: !GetAtt FurcircleTable.Arn
+        Action: [dynamodb:GetItem, dynamodb:BatchGetItem, dynamodb:Query]
+        Resource:
+          - !GetAtt FurcircleTable.Arn
+          - !Sub ${FurcircleTable.Arn}/index/GSI3
       - Effect: Allow
         Action: [ses:SendEmail]
         Resource: '*'
