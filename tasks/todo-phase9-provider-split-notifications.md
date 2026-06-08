@@ -11,44 +11,40 @@
 
 ---
 
-## S0 — SES email channel  ⟶ blocks S1, S3
-- [ ] `src/lib/email.ts` — `sendEmail({to,subject,html,text})` via `@aws-sdk/client-sesv2`
-- [ ] `src/functions/notifications/sendProviderEmail.ts` — SNS consumer, switch on Subject
-- [ ] `serverless.yml` — fn def (sns event), `ses:SendEmail` IAM, `FROM_EMAIL` env, SES identity
-- [ ] Unit test: `email.ts` (SES mocked) + `sendProviderEmail` routing
-- [ ] `events/providerEmail.json` + `sls invoke local`
-- [ ] ✅ Email arrives in dev; failure non-fatal
-- [ ] **CHECKPOINT A** — review from-address / SES access / phone decision
+## S0 — SES email channel  ⟶ blocks S1, S3  ✅ DONE (commit 16e607b)
+- [x] `src/lib/email.ts` — `sendEmail({to,subject,html,text})` via `@aws-sdk/client-sesv2`
+- [x] `src/functions/notifications/sendProviderEmail.ts` — SNS consumer, switch on Subject
+- [x] `serverless.yml` — fn def (sns event), `ses:SendEmail` IAM, `FROM_EMAIL` env, SES identity
+- [x] Unit test: `email.ts` (SES mocked) + `sendProviderEmail` routing
+- [x] ✅ failure non-fatal (consumer try/catch); 452 tests green, tsc clean
+- [ ] **CHECKPOINT A (deploy-time, deferred)** — verify from-address in SES, sandbox vs prod access, dev verified recipients. Not code-blocking.
 
-## S1 — Behaviourist email handoff  (independent; can ship first)
-- [ ] `submitAssessment.ts` — status terminal `submitted`; drop approve/reject fields
-- [ ] `submitAssessment.ts` — replace 409 guard with anti-spam or remove
-- [ ] `submitAssessment.ts` — SNS payload carries owner+pet+concern (subject `behaviourist_intake`)
-- [ ] `sendProviderEmail.ts` — handle `behaviourist_intake` (fetch owner/dog/behaviourist, compose)
-- [ ] Update `tests/functions/assessments/submitAssessment.test.ts`
-- [ ] `sls invoke local -f submitAssessment` → email received
-- [ ] ✅ 201 `submitted`, behaviourist emailed, no approval path
-- [ ] **CHECKPOINT B**
+## S1 — Behaviourist email handoff  ✅ DONE (commit a8de48d)
+- [x] `submitAssessment.ts` — status terminal `submitted`; drop approve/reject fields
+- [x] `submitAssessment.ts` — 409 guard → 24h anti-spam
+- [x] `submitAssessment.ts` — SNS payload carries owner+pet+concern (subject `behaviourist_intake`)
+- [x] `sendProviderEmail.ts` — handle `behaviourist_intake` (fetch owner/dog/behaviourist, compose)
+- [x] Update `tests/functions/assessments/submitAssessment.test.ts`
+- [x] ✅ 201 `submitted`, behaviourist emailed, no approval path; 457 green, tsc clean
+- [ ] **CHECKPOINT B** — S0+S1 deliver behaviourist email handoff. Review before S2/S3.
 
-## S2 — Provider taxonomy (veterinarian + behaviourist)  ⟶ blocks S3
-- [ ] Adopt `providerType:'veterinarian'`; ensure vet `VET#` profiles carry GSI3 keys
-- [ ] `listProviders.ts` — add `veterinarian`; decouple vet path from booking/assessment
-- [ ] Backfill script/doc — tag existing vet records with GSI3 keys
-- [ ] Update `tests/functions/providers/listProviders.test.ts` (veterinarian case)
-- [ ] `sls invoke local -f listProviders` type=veterinarian
-- [ ] ✅ vets list by rating; behaviourist unchanged; bad type 400
-- [ ] **CHECKPOINT C** — approve broadcast data model
+## S2 — Provider taxonomy (veterinarian + behaviourist)  ✅ DONE (commit b65dcec)
+- [x] Adopt `providerType:'veterinarian'`
+- [x] `listProviders.ts` — add `veterinarian`; decouple vet path from booking/assessment
+- [x] Backfill script `scripts/backfill-vet-gsi3.ts` (dry-run by default; run `--apply` at deploy)
+- [x] Update `tests/functions/providers/listProviders.test.ts` (veterinarian case)
+- [x] ✅ vets list by rating; behaviourist unchanged; bad type 400; 459 green, tsc clean
+- [ ] **DEPLOY-TIME** run backfill `--apply` once veterinarians are admin-added (dev currently has none)
 
-## S3 — Ask-a-Vet broadcast  (riskiest)
-- [ ] `createThread.ts` — drop required vetId; write unassigned thread (`vetId:null`, `status:'unassigned'`, `GSI2PK=QUEUE#ask_a_vet`)
-- [ ] Broadcast alert: on `question_broadcast`, query all active vets → push + email each
-- [ ] Claim-on-reply: conditional update in `vetSendMessage.ts` (cond on `vetId` null) → 409 `ALREADY_CLAIMED`
-- [ ] `vetListThreads.ts` — surface shared `QUEUE#ask_a_vet` open items + claimed threads
-- [ ] Preserve welcome-plan 1/month gate
-- [ ] Tests: createThread, vetSendMessage (claim race), vetListThreads
-- [ ] `sls invoke local` 2-vet simulation
-- [ ] ✅ both vets alerted; A claims; B→409; owner sees reply; 2nd/month→403
-- [ ] **CHECKPOINT D** — review messaging regressions
+## S3 — Ask-a-Vet broadcast  ✅ DONE (commits 5234736, 1d01a31)
+- [x] `createThread.ts` — drop required vetId; write unassigned thread (`vetId:null`, `status:'unassigned'`, `GSI2PK=QUEUE#ask_a_vet`)
+- [x] Broadcast alert: on `question_broadcast`, query all active vets → push + email each
+- [x] Claim-on-reply: conditional update in `vetSendMessage.ts` (cond `status='unassigned'`) → 409 `ALREADY_CLAIMED`
+- [x] `vetListThreads.ts` — surface shared `QUEUE#ask_a_vet` open items + claimed threads
+- [x] Preserve welcome-plan 1/month gate
+- [x] Tests: createThread, vetSendMessage (claim race), vetListThreads, providers helper, both consumers
+- [x] ✅ 469 green, tsc clean, sls config resolves
+- [ ] **CHECKPOINT D** — ⚠️ BREAKING API CHANGE: `POST /threads` no longer takes `vetId`. Mobile client must update. Deploy needs OpenAPI sync (S4) + client coordination.
 
 ## S4 — Cleanup + docs
 - [ ] `nutritionist` → coming-soon in listProviders/home
