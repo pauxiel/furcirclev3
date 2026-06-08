@@ -29,6 +29,18 @@ const openThread = {
   threadId: 'thread-1', status: 'open', ownerId: 'owner-1', vetId: 'vet-123', dogId: 'dog-1',
 };
 
+const unassignedThread = {
+  PK: 'THREAD#thread-1', SK: 'METADATA',
+  threadId: 'thread-1', status: 'unassigned', ownerId: 'owner-1', vetId: null, dogId: 'dog-1',
+  createdAt: '2026-01-01T00:00:00.000Z',
+};
+
+const conditionalFail = (): Error => {
+  const e = new Error('The conditional request failed');
+  e.name = 'ConditionalCheckFailedException';
+  return e;
+};
+
 describe('vetSendMessage handler', () => {
   beforeEach(() => {
     jest.resetAllMocks();
@@ -76,5 +88,33 @@ describe('vetSendMessage handler', () => {
     const body = JSON.parse(res.body);
     expect(body.senderType).toBe('vet');
     expect(body.body).toBe('Hi Joshua!');
+  });
+
+  it('claims an unassigned (broadcast) thread on first reply', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Item: unassignedThread }) // Get metadata
+      .mockResolvedValueOnce({})                          // conditional claim Update
+      .mockResolvedValueOnce({});                         // Put message
+
+    const res = (await handler(makeEvent('thread-1', { body: 'Happy to help!' }))) as Result;
+    expect(res.statusCode).toBe(201);
+
+    // the claim is a conditional update that assigns this vet + flips the queue
+    const claim = mockDocClientSend.mock.calls[1][0];
+    const input = (claim.input ?? claim) as Record<string, any>;
+    expect(input.UpdateExpression).toMatch(/vetId/);
+    expect(input.ConditionExpression).toBeDefined();
+    expect(input.ExpressionAttributeValues[':v']).toBe('vet-123');
+    expect(input.ExpressionAttributeValues[':gpk']).toBe('VET#vet-123');
+  });
+
+  it('returns 409 ALREADY_CLAIMED when another vet claimed first', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Item: unassignedThread }) // Get metadata
+      .mockRejectedValueOnce(conditionalFail());          // claim loses the race
+
+    const res = (await handler(makeEvent('thread-1', { body: 'Me first!' }))) as Result;
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).error).toBe('ALREADY_CLAIMED');
   });
 });

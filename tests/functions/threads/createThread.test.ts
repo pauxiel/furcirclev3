@@ -1,5 +1,7 @@
 /**
- * Unit tests for POST /threads (createThread)
+ * Unit tests for POST /threads (createThread) — Ask-a-Vet broadcast model.
+ * A question is created unassigned and fanned out to all vets; the first vet
+ * to reply claims it (see vetSendMessage).
  */
 
 const mockDocClientSend = jest.fn();
@@ -45,36 +47,24 @@ const ownerSubscription = {
   plan: 'welcome',
 };
 
-const vetProfile = {
-  PK: 'VET#vet-123',
-  SK: 'PROFILE',
-  vetId: 'vet-123',
-  firstName: 'Sarah',
-  lastName: 'Mitchell',
-  isActive: true,
-  pushToken: 'ExponentPushToken[vet123]',
-};
-
 const validBody = {
-  vetId: 'vet-123',
   dogId: 'dog-123',
   type: 'ask_a_vet',
   initialMessage: 'Is mouthing normal at 3 months?',
 };
 
-describe('createThread handler', () => {
+describe('createThread handler (broadcast)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env['TABLE_NAME'] = 'furcircle-test';
     process.env['SNS_TOPIC_ARN'] = 'arn:aws:sns:us-east-1:123:furcircle-notifications-test';
   });
 
-  it('returns 201 with threadId and first message', async () => {
+  it('returns 201 with an unassigned thread and the first message', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: dogProfile })        // GetItem dog
       .mockResolvedValueOnce({ Item: ownerSubscription }) // GetItem subscription
-      .mockResolvedValueOnce({ Item: vetProfile })        // GetItem vet
-      .mockResolvedValueOnce({ Count: 0 })               // Query GSI1 (welcome gate)
+      .mockResolvedValueOnce({ Count: 0 })                // Query GSI1 (welcome gate)
       .mockResolvedValueOnce({})                          // PutItem THREAD METADATA
       .mockResolvedValueOnce({});                         // PutItem first MSG
     mockSnsSend.mockResolvedValueOnce({});
@@ -83,27 +73,26 @@ describe('createThread handler', () => {
     expect((res as { statusCode: number }).statusCode).toBe(201);
     const body = JSON.parse((res as { body: string }).body);
     expect(body.threadId).toBe('test-thread-uuid');
-    expect(body.status).toBe('open');
+    expect(body.status).toBe('unassigned');
+    expect(body.vetId).toBeNull();
     expect(body.messages).toHaveLength(1);
     expect(body.messages[0].senderType).toBe('owner');
   });
 
-  it('returns 404 VET_NOT_FOUND when vet not in DynamoDB', async () => {
+  it('returns 404 DOG_NOT_FOUND when dog missing', async () => {
     mockDocClientSend
-      .mockResolvedValueOnce({ Item: dogProfile })
-      .mockResolvedValueOnce({ Item: ownerSubscription })
-      .mockResolvedValueOnce({ Item: undefined }); // vet not found
+      .mockResolvedValueOnce({ Item: undefined })
+      .mockResolvedValueOnce({ Item: ownerSubscription });
 
     const res = await handler(makeEvent(validBody));
     expect((res as { statusCode: number }).statusCode).toBe(404);
-    expect(JSON.parse((res as { body: string }).body).error).toBe('VET_NOT_FOUND');
+    expect(JSON.parse((res as { body: string }).body).error).toBe('DOG_NOT_FOUND');
   });
 
   it('returns 403 FORBIDDEN when dog belongs to different owner', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: { ...dogProfile, ownerId: 'other-owner' } })
-      .mockResolvedValueOnce({ Item: ownerSubscription })
-      .mockResolvedValueOnce({ Item: vetProfile });
+      .mockResolvedValueOnce({ Item: ownerSubscription });
 
     const res = await handler(makeEvent(validBody));
     expect((res as { statusCode: number }).statusCode).toBe(403);
@@ -114,7 +103,6 @@ describe('createThread handler', () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: dogProfile })
       .mockResolvedValueOnce({ Item: ownerSubscription })
-      .mockResolvedValueOnce({ Item: vetProfile })
       .mockResolvedValueOnce({ Count: 1 }); // already has a thread this month
 
     const res = await handler(makeEvent(validBody));
@@ -127,7 +115,6 @@ describe('createThread handler', () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: dogProfile })
       .mockResolvedValueOnce({ Item: protectorSub })
-      .mockResolvedValueOnce({ Item: vetProfile })
       .mockResolvedValueOnce({})  // PutItem METADATA
       .mockResolvedValueOnce({}); // PutItem MSG
     mockSnsSend.mockResolvedValueOnce({});
@@ -140,7 +127,6 @@ describe('createThread handler', () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: dogProfile })
       .mockResolvedValueOnce({ Item: ownerSubscription })
-      .mockResolvedValueOnce({ Item: vetProfile })
       .mockResolvedValueOnce({ Count: 0 })
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({});
@@ -155,11 +141,10 @@ describe('createThread handler', () => {
     expect((res as { statusCode: number }).statusCode).toBe(400);
   });
 
-  it('METADATA item has correct GSI1PK, GSI1SK, GSI2PK, GSI2SK keys', async () => {
+  it('METADATA item is unassigned and placed in the shared broadcast queue', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: dogProfile })
       .mockResolvedValueOnce({ Item: ownerSubscription })
-      .mockResolvedValueOnce({ Item: vetProfile })
       .mockResolvedValueOnce({ Count: 0 })
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({});
@@ -175,15 +160,34 @@ describe('createThread handler', () => {
     const item = (metadataCall![0] as { input: { Item: Record<string, unknown> } }).input.Item;
     expect(item['GSI1PK']).toBe('OWNER#owner-123');
     expect((item['GSI1SK'] as string)).toMatch(/^THREAD#ask_a_vet#/);
-    expect(item['GSI2PK']).toBe('VET#vet-123');
-    expect((item['GSI2SK'] as string)).toMatch(/^THREAD#open#/);
+    expect(item['GSI2PK']).toBe('QUEUE#ask_a_vet');
+    expect((item['GSI2SK'] as string)).toMatch(/^THREAD#unassigned#/);
+    expect(item['vetId']).toBeNull();
+    expect(item['status']).toBe('unassigned');
+  });
+
+  it('publishes a question_broadcast notification', async () => {
+    mockDocClientSend
+      .mockResolvedValueOnce({ Item: dogProfile })
+      .mockResolvedValueOnce({ Item: ownerSubscription })
+      .mockResolvedValueOnce({ Count: 0 })
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({});
+    mockSnsSend.mockResolvedValueOnce({});
+
+    await handler(makeEvent(validBody));
+
+    const publish = (mockSnsSend.mock.calls[0][0] as { input: { Subject: string; Message: string } }).input;
+    expect(publish.Subject).toBe('question_broadcast');
+    const msg = JSON.parse(publish.Message);
+    expect(msg.threadId).toBe('test-thread-uuid');
+    expect(msg.dogName).toBe('Buddy');
   });
 
   it('MSG item has senderType=owner and readAt=null', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: dogProfile })
       .mockResolvedValueOnce({ Item: ownerSubscription })
-      .mockResolvedValueOnce({ Item: vetProfile })
       .mockResolvedValueOnce({ Count: 0 })
       .mockResolvedValueOnce({})
       .mockResolvedValueOnce({});

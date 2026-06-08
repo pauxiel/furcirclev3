@@ -18,9 +18,8 @@ export const handler = async (
     return error('VALIDATION_ERROR', 'Invalid JSON body', 400);
   }
 
-  const { vetId, dogId, type, initialMessage } = body;
+  const { dogId, type, initialMessage } = body;
 
-  if (!vetId || typeof vetId !== 'string') return error('VALIDATION_ERROR', 'vetId required', 400);
   if (!dogId || typeof dogId !== 'string') return error('VALIDATION_ERROR', 'dogId required', 400);
   if (type !== 'ask_a_vet') return error('VALIDATION_ERROR', 'type must be ask_a_vet', 400);
   if (!initialMessage || typeof initialMessage !== 'string') return error('VALIDATION_ERROR', 'initialMessage required', 400);
@@ -30,20 +29,19 @@ export const handler = async (
   const table = process.env['TABLE_NAME']!;
   const topicArn = process.env['SNS_TOPIC_ARN']!;
 
-  // Parallel: fetch dog, subscription, vet
-  const [dogResult, subResult, vetResult] = await Promise.all([
+  // Ask-a-Vet is a broadcast: the question is created unassigned and fanned out
+  // to all vets. No single vet is chosen at creation — the first vet to reply
+  // claims the thread (see vetSendMessage). So we no longer look up a vet here.
+  const [dogResult, subResult] = await Promise.all([
     docClient.send(new GetCommand({ TableName: table, Key: { PK: `DOG#${dogId}`, SK: 'PROFILE' } })),
     docClient.send(new GetCommand({ TableName: table, Key: { PK: `OWNER#${userId}`, SK: 'SUBSCRIPTION' } })),
-    docClient.send(new GetCommand({ TableName: table, Key: { PK: `VET#${vetId}`, SK: 'PROFILE' } })),
   ]);
 
   const dog = dogResult.Item;
   const subscription = subResult.Item;
-  const vet = vetResult.Item;
 
   if (!dog) return error('DOG_NOT_FOUND', 'Dog not found', 404);
   if (dog['ownerId'] !== userId) return error('FORBIDDEN', 'Access denied', 403);
-  if (!vet || vet['isActive'] === false) return error('VET_NOT_FOUND', 'Vet not found or inactive', 404);
 
   // Subscription gate for welcome plan
   const plan = subscription?.['plan'] as string | undefined;
@@ -78,14 +76,16 @@ export const handler = async (
           SK: 'METADATA',
           GSI1PK: `OWNER#${userId}`,
           GSI1SK: `THREAD#ask_a_vet#${now}`,
-          GSI2PK: `VET#${vetId}`,
-          GSI2SK: `THREAD#open#${now}`,
+          // Shared broadcast partition — every vet queries QUEUE#ask_a_vet for
+          // unassigned questions. On claim this flips to VET#${claimerId}.
+          GSI2PK: 'QUEUE#ask_a_vet',
+          GSI2SK: `THREAD#unassigned#${now}`,
           threadId,
           ownerId: userId,
-          vetId,
+          vetId: null,
           dogId,
           type: 'ask_a_vet',
-          status: 'open',
+          status: 'unassigned',
           createdAt: now,
           closedAt: null,
         },
@@ -109,17 +109,18 @@ export const handler = async (
     ),
   ]);
 
+  // Broadcast to all vets (push + email fan-out happens in the notification
+  // consumers, which look up active veterinarians).
   try {
     await sns.send(
       new PublishCommand({
         TopicArn: topicArn,
-        Subject: 'message_received',
+        Subject: 'question_broadcast',
         Message: JSON.stringify({
-          vetId,
           threadId,
-          ownerName: dog['name'] ?? '',
+          ownerId: userId,
+          dogId,
           dogName: dog['name'] as string,
-          pushToken: vet['pushToken'] ?? null,
           body: (initialMessage as string).slice(0, 100),
         }),
       }),
@@ -131,10 +132,10 @@ export const handler = async (
   return success(
     {
       threadId,
-      vetId,
+      vetId: null,
       dogId,
       type: 'ask_a_vet',
-      status: 'open',
+      status: 'unassigned',
       messages: [
         {
           messageId,
