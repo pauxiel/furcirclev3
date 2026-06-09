@@ -66,6 +66,12 @@ describe('listProviders handler', () => {
     expect(JSON.parse(res.body).error).toBe('INVALID_TYPE');
   });
 
+  it('returns 400 for nutritionist (coming-soon, not a live type)', async () => {
+    const res = (await handler(makeEvent({ type: 'nutritionist' }))) as Result;
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error).toBe('INVALID_TYPE');
+  });
+
   it('returns 200 with providers list and assessmentStatus=none when no assessment', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Items: [vetRow] })               // GSI3 query

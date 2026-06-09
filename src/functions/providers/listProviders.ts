@@ -4,7 +4,10 @@ import { docClient } from '../../lib/dynamodb';
 import { success, error } from '../../lib/response';
 import { getUserId } from '../../lib/auth';
 
-const VALID_TYPES = ['veterinarian', 'behaviourist', 'nutritionist'];
+// Two live provider types. `nutritionist` is coming-soon — its data is retained
+// (records keep providerType:'nutritionist') but it is not surfaced as live, so
+// it falls through to INVALID_TYPE. Re-add here to bring it back.
+const VALID_TYPES = ['veterinarian', 'behaviourist'];
 
 export const handler = async (
   event: APIGatewayProxyEventV2WithJWTAuthorizer,
@@ -14,7 +17,7 @@ export const handler = async (
   const type = event.queryStringParameters?.['type'];
 
   if (!type || !VALID_TYPES.includes(type)) {
-    return error('INVALID_TYPE', 'type must be veterinarian, behaviourist or nutritionist', 400);
+    return error('INVALID_TYPE', 'type must be veterinarian or behaviourist', 400);
   }
 
   const providersResult = await docClient.send(
