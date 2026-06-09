@@ -46,10 +46,18 @@
 - [x] ✅ 469 green, tsc clean, sls config resolves
 - [ ] **CHECKPOINT D** — ⚠️ BREAKING API CHANGE: `POST /threads` no longer takes `vetId`. Mobile client must update. Deploy needs OpenAPI sync (S4) + client coordination.
 
-## S4 — Cleanup + docs
-- [ ] `nutritionist` → coming-soon in listProviders/home
-- [ ] Test asserting behaviourist no longer routes to bookings
-- [ ] Update `docs/openapi.yaml`
-- [ ] Update `docs/founder-homescreen-services-analysis.md` (done log)
-- [ ] ADR `docs/adr-ask-a-vet-broadcast.md`
-- [ ] ✅ OpenAPI matches handlers; suite green (minus live-AWS integration test)
+## S4 — Cleanup + docs  ✅ DONE (commit a90fc25)
+- [x] `nutritionist` → coming-soon in listProviders (data retained; INVALID_TYPE)
+- [x] behaviourist-not-booking covered by S1 terminal-status tests + dormant Proactive gate
+- [x] Update `docs/openapi.yaml` (threads/providers/assessments/types)
+- [x] Update `docs/founder-homescreen-services-analysis.md` (phase-9 done log)
+- [x] ADR `docs/adr-ask-a-vet-broadcast.md`
+- [x] ✅ 470 green, tsc clean, OpenAPI valid YAML
+
+---
+
+## Remaining (deploy / launch — not code)
+- [ ] Deploy S2+S3 to dev (`sls deploy --stage dev --param="fromEmail=obayuwanap@gmail.com"`)
+- [ ] Run `scripts/backfill-vet-gsi3.ts --apply` once veterinarians admin-added
+- [ ] SES production access request (still sandbox)
+- [ ] Mobile client: `POST /threads` drops `vetId`
