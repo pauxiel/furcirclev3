@@ -8,6 +8,9 @@ import { getStripe } from '../../lib/stripe';
 const VALID_PLAN_KEYS = ['protector', 'proactive'] as const;
 type PaidPlanKey = (typeof VALID_PLAN_KEYS)[number];
 
+// Proactive is hidden ("Coming Soon") — only Protector is sellable for now.
+const SELLABLE_PLAN_KEYS = ['protector'] as const;
+
 const PLAN_PRICE_IDS: Record<PaidPlanKey, string> = {
   protector: process.env['STRIPE_PRICE_ID_PROTECTOR'] ?? '',
   proactive: process.env['STRIPE_PRICE_ID_PROACTIVE'] ?? '',
@@ -25,8 +28,8 @@ export const handler = async (
 
   const { planKey, paymentMethodId } = body;
 
-  if (!planKey || !VALID_PLAN_KEYS.includes(planKey as PaidPlanKey)) {
-    return error('VALIDATION_ERROR', 'planKey must be protector or proactive', 400);
+  if (!planKey || !SELLABLE_PLAN_KEYS.includes(planKey as (typeof SELLABLE_PLAN_KEYS)[number])) {
+    return error('VALIDATION_ERROR', 'planKey must be protector', 400);
   }
   if (!paymentMethodId || typeof paymentMethodId !== 'string') {
     return error('VALIDATION_ERROR', 'paymentMethodId required', 400);

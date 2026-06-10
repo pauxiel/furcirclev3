@@ -1,5 +1,5 @@
 /**
- * Unit tests for POST /dogs/{dogId}/medical-record-url
+ * Unit tests for GET /dogs/{dogId}/medical-record-url?contentType=...
  */
 
 const mockDocClientSend = jest.fn();
@@ -20,12 +20,12 @@ import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
 
 const makeEvent = (
   dogId: string,
-  body: Record<string, unknown>,
+  query: Record<string, string>,
   userId = 'owner-123',
 ): APIGatewayProxyEventV2WithJWTAuthorizer =>
   ({
     pathParameters: { dogId },
-    body: JSON.stringify(body),
+    queryStringParameters: query,
     requestContext: {
       authorizer: { jwt: { claims: { sub: userId }, scopes: [] }, principalId: '', integrationLatency: 0 },
     },
@@ -108,16 +108,14 @@ describe('getMedicalRecordUploadUrl handler', () => {
     expect(JSON.parse((res as { body: string }).body).error).toBe('FORBIDDEN');
   });
 
-  it('returns 400 for invalid JSON body', async () => {
-    const event = {
+  it('returns 400 when no query parameters present', async () => {
+    const res = await handler({
       pathParameters: { dogId: 'dog-123' },
-      body: 'not-json',
+      queryStringParameters: undefined,
       requestContext: {
         authorizer: { jwt: { claims: { sub: 'owner-123' }, scopes: [] }, principalId: '', integrationLatency: 0 },
       },
-    } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer;
-
-    const res = await handler(event);
+    } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer);
     expect((res as { statusCode: number }).statusCode).toBe(400);
   });
 });
