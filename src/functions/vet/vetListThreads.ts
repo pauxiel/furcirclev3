@@ -16,19 +16,54 @@ export const handler = async (
 
   const skPrefix = statusFilter ? `THREAD#${statusFilter}#` : 'THREAD#';
 
-  const threadsResult = await docClient.send(
-    new QueryCommand({
-      TableName: table,
-      IndexName: 'GSI2',
-      KeyConditionExpression: 'GSI2PK = :pk AND begins_with(GSI2SK, :prefix)',
-      ExpressionAttributeValues: { ':pk': `VET#${vetId}`, ':prefix': skPrefix },
-      ScanIndexForward: false,
-      Limit: limit,
-    }),
-  );
+  // The vet's own (claimed) threads live under VET#${vetId}. Unassigned
+  // Ask-a-Vet broadcast questions live in the shared QUEUE#ask_a_vet partition
+  // so every vet can see and claim them. Include the queue unless the caller is
+  // filtering by a concrete (non-unassigned) status.
+  const includeQueue = !statusFilter || statusFilter === 'unassigned';
 
-  let threads = threadsResult.Items ?? [];
+  const queries: Promise<{ Items?: Record<string, unknown>[] }>[] = [
+    docClient.send(
+      new QueryCommand({
+        TableName: table,
+        IndexName: 'GSI2',
+        KeyConditionExpression: 'GSI2PK = :pk AND begins_with(GSI2SK, :prefix)',
+        ExpressionAttributeValues: { ':pk': `VET#${vetId}`, ':prefix': skPrefix },
+        ScanIndexForward: false,
+        Limit: limit,
+      }),
+    ),
+  ];
+  if (includeQueue) {
+    queries.push(
+      docClient.send(
+        new QueryCommand({
+          TableName: table,
+          IndexName: 'GSI2',
+          KeyConditionExpression: 'GSI2PK = :pk AND begins_with(GSI2SK, :prefix)',
+          ExpressionAttributeValues: { ':pk': 'QUEUE#ask_a_vet', ':prefix': 'THREAD#unassigned#' },
+          ScanIndexForward: false,
+          Limit: limit,
+        }),
+      ),
+    );
+  }
+
+  const queryResults = await Promise.all(queries);
+  const merged = queryResults.flatMap((r) => r.Items ?? []);
+
+  // Dedupe by threadId, apply type filter, sort newest-first, cap at limit.
+  const seen = new Set<string>();
+  let threads = merged.filter((t) => {
+    const id = t['threadId'] as string;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
   if (typeFilter) threads = threads.filter((t) => t['type'] === typeFilter);
+  threads.sort((a, b) => String(b['createdAt']).localeCompare(String(a['createdAt'])));
+  threads = threads.slice(0, limit);
+
   if (threads.length === 0) return success({ threads: [] });
 
   const ownerKeys = [...new Set(threads.map((t) => t['ownerId'] as string))].flatMap((id) => [

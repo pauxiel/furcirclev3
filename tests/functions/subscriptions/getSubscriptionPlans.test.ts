@@ -24,13 +24,24 @@ describe('getSubscriptionPlans handler', () => {
     expect(welcome.stripePriceId).toBeNull();
   });
 
-  it('proactive plan has 70 credits and Most Popular badge', async () => {
+  it('protector plan is sellable and carries the Most Popular badge', async () => {
+    const result = (await handler({} as never)) as Result;
+    const { plans } = JSON.parse(result.body);
+    const protector = plans[1];
+    expect(protector.comingSoon).toBe(false);
+    expect(protector.badge).toBe('Most Popular');
+    expect(protector.price).toBe(1499);
+  });
+
+  it('proactive plan is hidden as Coming Soon', async () => {
     const result = (await handler({} as never)) as Result;
     const { plans } = JSON.parse(result.body);
     const proactive = plans[2];
-    expect(proactive.credits).toBe(70);
-    expect(proactive.badge).toBe('Most Popular');
-    expect(proactive.price).toBe(3999);
+    expect(proactive.comingSoon).toBe(true);
+    expect(proactive.badge).toBe('Coming Soon');
+    expect(proactive.price).toBeNull();
+    expect(proactive.credits).toBeNull();
+    expect(proactive.stripePriceId).toBeNull();
   });
 
   it('each plan has features array', async () => {

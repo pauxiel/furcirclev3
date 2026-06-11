@@ -2,6 +2,7 @@ import type { SNSEvent } from 'aws-lambda';
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../../lib/dynamodb';
 import { sendPush } from '../../lib/push';
+import { listActiveVeterinarians } from '../../lib/providers';
 
 const TITLE = 'FurCircle';
 
@@ -57,6 +58,30 @@ export const handler = async (event: SNSEvent): Promise<void> => {
   for (const record of event.Records) {
     const subject = record.Sns.Subject ?? '';
     const payload = JSON.parse(record.Sns.Message) as NotifPayload;
+
+    // Ask-a-Vet broadcast: push to every active vet that has a token.
+    if (subject === 'question_broadcast') {
+      const dogName = (payload['dogName'] as string) ?? 'a dog';
+      try {
+        const vets = await listActiveVeterinarians(table);
+        await Promise.all(
+          vets
+            .filter((v) => v.pushToken)
+            .map((v) =>
+              sendPush({
+                to: v.pushToken as string,
+                title: TITLE,
+                body: `New Ask-a-Vet question about ${dogName}`,
+                data: { type: 'question_broadcast', threadId: payload['threadId'] },
+              }).catch((err) => console.error(`Broadcast push failed for vet=${v.vetId}:`, err)),
+            ),
+        );
+      } catch (err) {
+        console.error('question_broadcast push fan-out failed:', err);
+      }
+      continue;
+    }
+
     const ownerId = payload['ownerId'] as string | undefined;
 
     const message = buildMessage(subject, payload);

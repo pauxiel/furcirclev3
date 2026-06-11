@@ -143,8 +143,8 @@ components:
       properties:
         threadId: { type: string }
         type: { type: string, enum: [ask_a_vet, post_booking] }
-        status: { type: string, enum: [open, closed] }
-        vetId: { type: string }
+        status: { type: string, enum: [unassigned, open, closed], description: ask_a_vet starts 'unassigned' and becomes 'open' when a vet claims it }
+        vetId: { type: string, nullable: true, description: Null until a vet claims the broadcast question }
         dogId: { type: string }
         createdAt: { type: string, format: date-time }
 
@@ -178,14 +178,14 @@ components:
         vetId: { type: string }
         firstName: { type: string }
         lastName: { type: string }
-        providerType: { type: string, enum: [vet, behaviourist] }
+        providerType: { type: string, enum: [veterinarian, behaviourist] }
         specialisation: { type: string }
         bio: { type: string }
         photoUrl: { type: string, nullable: true }
         rating: { type: number }
         reviewCount: { type: integer }
-        assessmentStatus: { type: string, enum: [none, pending, approved, rejected] }
-        canBook: { type: boolean }
+        assessmentStatus: { type: string, enum: [none, submitted], description: Behaviourist only; omitted for veterinarians }
+        canBook: { type: boolean, description: Behaviourist/nutritionist only; omitted for veterinarians }
         nextAvailable: { type: string, nullable: true, format: date }
 
     Booking:
@@ -208,7 +208,7 @@ components:
         firstName: { type: string }
         lastName: { type: string }
         email: { type: string }
-        providerType: { type: string, enum: [vet, behaviourist] }
+        providerType: { type: string, enum: [veterinarian, behaviourist], description: nutritionist is coming-soon (dormant; data retained, not surfaced as a live type) }
         specialisation: { type: string }
         bio: { type: string }
         photoUrl: { type: string, nullable: true }
@@ -226,9 +226,7 @@ components:
         dogId: { type: string }
         description: { type: string }
         mediaUrls: { type: array, items: { type: string } }
-        status: { type: string, enum: [pending, approved, rejected] }
-        vetResponse: { type: string, nullable: true }
-        reviewedAt: { type: string, nullable: true, format: date-time }
+        status: { type: string, enum: [submitted], description: Terminal — behaviourist intake has no approve/reject lifecycle; details are emailed to the behaviourist who follows up off-platform }
         createdAt: { type: string, format: date-time }
 
 security:
@@ -770,21 +768,26 @@ paths:
   /threads:
     post:
       tags: [Messaging]
-      summary: Open a new ask-a-vet thread
+      summary: Ask a vet (broadcast)
+      description: >
+        Posts an Ask-a-Vet question. The question is broadcast to all active
+        veterinarians (push + email); the first vet to reply claims the thread.
+        The owner does not choose a vet, so no vetId is supplied. The thread is
+        returned with status 'unassigned' and vetId null until claimed.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [vetId, dogId, body]
+              required: [dogId, type, initialMessage]
               properties:
-                vetId: { type: string }
                 dogId: { type: string }
-                body: { type: string, minLength: 1, maxLength: 2000 }
+                type: { type: string, enum: [ask_a_vet] }
+                initialMessage: { type: string, minLength: 1, maxLength: 2000 }
       responses:
         '201':
-          description: Thread created with first message
+          description: Unassigned thread created with the first message
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Thread' }
@@ -794,7 +797,7 @@ paths:
       parameters:
         - name: status
           in: query
-          schema: { type: string, enum: [open, closed] }
+          schema: { type: string, enum: [unassigned, open, closed] }
       responses:
         '200':
           description: Thread list
@@ -983,11 +986,12 @@ paths:
   /providers:
     get:
       tags: [Providers]
-      summary: Discover vets and behaviourists
+      summary: Discover veterinarians and behaviourists
       parameters:
         - name: type
           in: query
-          schema: { type: string, enum: [vet, behaviourist] }
+          required: true
+          schema: { type: string, enum: [veterinarian, behaviourist] }
         - name: nextToken
           in: query
           schema: { type: string }
@@ -1076,7 +1080,11 @@ paths:
   /assessments:
     post:
       tags: [Assessments]
-      summary: Submit a behaviour assessment request
+      summary: Submit a behaviourist intake request
+      description: >
+        Submits the owner's details to a behaviourist. The behaviourist is
+        emailed the owner's name, email, dog and concern and follows up
+        off-platform. Terminal — there is no approve/reject step or booking.
       requestBody:
         required: true
         content:
@@ -1085,7 +1093,7 @@ paths:
               type: object
               required: [vetId, dogId, description]
               properties:
-                vetId: { type: string }
+                vetId: { type: string, description: The behaviourist's id }
                 dogId: { type: string }
                 description: { type: string, minLength: 50 }
                 mediaUrls:
@@ -1094,12 +1102,12 @@ paths:
                   items: { type: string }
       responses:
         '201':
-          description: Assessment submitted
+          description: Intake submitted (status 'submitted')
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Assessment' }
         '409':
-          description: Assessment already exists for this owner+vet
+          description: A recent submission to this behaviourist already exists (24h anti-spam)
 
   /assessments/{assessmentId}:
     get:

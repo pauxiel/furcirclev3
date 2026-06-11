@@ -88,6 +88,24 @@ describe('sendPushNotification', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it('fans out a question_broadcast push to all active vets with a token', async () => {
+    mockDocClientSend.mockResolvedValueOnce({
+      Items: [
+        { vetId: 'v1', pushToken: 'ExponentPushToken[v1]', isActive: true },
+        { vetId: 'v2', pushToken: null, isActive: true },
+        { vetId: 'v3', pushToken: 'ExponentPushToken[v3]', isActive: true },
+      ],
+    });
+
+    await handler(makeSnsEvent('question_broadcast', { threadId: 't1', dogName: 'Buddy' }) as any);
+
+    // v1 and v3 have tokens; v2 skipped
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    const bodies = mockFetch.mock.calls.map((c) => JSON.parse(c[1].body));
+    expect(bodies.map((b) => b.to).sort()).toEqual(['ExponentPushToken[v1]', 'ExponentPushToken[v3]']);
+    expect(bodies[0].body).toContain('Buddy');
+  });
+
   it('does not throw when Expo API returns error', async () => {
     mockDocClientSend.mockResolvedValueOnce({
       Item: { pushToken: 'ExponentPushToken[abc]' },

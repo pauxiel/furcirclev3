@@ -76,4 +76,14 @@ describe('topUpCredits handler', () => {
     const result = (await handler(makeEvent({ credits: 20 }))) as Result;
     expect(result.statusCode).toBe(400);
   });
+
+  it('returns 403 for non-proactive plans (top-ups hidden while Proactive is Coming Soon)', async () => {
+    mockDocClientSend.mockReset();
+    mockDocClientSend.mockResolvedValueOnce({ Item: { ...subRecord, plan: 'protector' } });
+
+    const result = (await handler(makeEvent({ credits: 20, paymentMethodId: 'pm_test' }))) as Result;
+    expect(result.statusCode).toBe(403);
+    expect(JSON.parse(result.body).error).toBe('FORBIDDEN');
+    expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
+  });
 });

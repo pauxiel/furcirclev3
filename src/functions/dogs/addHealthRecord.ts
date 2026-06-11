@@ -3,6 +3,7 @@ import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../../lib/dynamodb';
 import { success, error } from '../../lib/response';
 import { getUserId } from '../../lib/auth';
+import { v4 as uuidv4 } from 'uuid';
 
 export const handler = async (
   event: APIGatewayProxyEventV2WithJWTAuthorizer,
@@ -38,7 +39,7 @@ export const handler = async (
   if (!dog) return error('DOG_NOT_FOUND', 'Dog not found', 404);
   if (dog['ownerId'] !== userId) return error('FORBIDDEN', 'Access denied', 403);
 
-  const recordId = crypto.randomUUID();
+  const recordId = uuidv4();
   const now = new Date().toISOString();
   const item: Record<string, unknown> = {
     PK: `DOG#${dogId}`,

@@ -35,6 +35,11 @@ export const handler = async (
   const subscription = subResult.Item;
 
   if (!subscription) return error('SUBSCRIPTION_NOT_FOUND', 'Subscription not found', 404);
+  // Credits are only spendable on Proactive (video consultations), which is hidden / Coming Soon.
+  // Gate top-ups on the plan so nobody pays for credits they can't use.
+  if (subscription['plan'] !== 'proactive') {
+    return error('FORBIDDEN', 'Credit top-ups require the Proactive plan', 403);
+  }
   if (!subscription['stripeCustomerId']) {
     return error('STRIPE_CUSTOMER_REQUIRED', 'Create a Stripe customer first', 400);
   }

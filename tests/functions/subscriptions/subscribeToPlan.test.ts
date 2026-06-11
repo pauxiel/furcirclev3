@@ -57,32 +57,28 @@ describe('subscribeToPlan handler', () => {
     expect(result.statusCode).toBe(400);
   });
 
+  it('returns 400 when planKey is proactive (hidden / Coming Soon)', async () => {
+    const result = (await handler(makeEvent({ planKey: 'proactive', paymentMethodId: 'pm_x' }))) as Result;
+    expect(result.statusCode).toBe(400);
+    expect(JSON.parse(result.body).error).toBe('VALIDATION_ERROR');
+  });
+
   it('returns 400 when stripeCustomerId not set', async () => {
     mockDocClientSend.mockReset();
     mockDocClientSend.mockResolvedValueOnce({ Item: { ...subRecord, stripeCustomerId: undefined } });
 
-    const result = (await handler(makeEvent({ planKey: 'proactive', paymentMethodId: 'pm_x' }))) as Result;
+    const result = (await handler(makeEvent({ planKey: 'protector', paymentMethodId: 'pm_x' }))) as Result;
     expect(result.statusCode).toBe(400);
     expect(JSON.parse(result.body).error).toBe('STRIPE_CUSTOMER_REQUIRED');
   });
 
   it('attaches payment method and creates Stripe subscription', async () => {
-    await handler(makeEvent({ planKey: 'proactive', paymentMethodId: 'pm_test' }));
+    await handler(makeEvent({ planKey: 'protector', paymentMethodId: 'pm_test' }));
 
     expect(mockPaymentMethodsAttach).toHaveBeenCalledWith('pm_test', { customer: 'cus_123' });
     expect(mockSubscriptionsCreate).toHaveBeenCalledWith(
       expect.objectContaining({ customer: 'cus_123' }),
     );
-  });
-
-  it('sets creditBalance=70 when subscribing to proactive', async () => {
-    const result = (await handler(makeEvent({ planKey: 'proactive', paymentMethodId: 'pm_test' }))) as Result;
-
-    expect(result.statusCode).toBe(200);
-    const body = JSON.parse(result.body);
-    expect(body.plan).toBe('proactive');
-    expect(body.creditBalance).toBe(70);
-    expect(body.status).toBe('active');
   });
 
   it('sets creditBalance=0 when subscribing to protector', async () => {
@@ -92,10 +88,11 @@ describe('subscribeToPlan handler', () => {
     const body = JSON.parse(result.body);
     expect(body.plan).toBe('protector');
     expect(body.creditBalance).toBe(0);
+    expect(body.status).toBe('active');
   });
 
   it('returns 400 when paymentMethodId missing', async () => {
-    const result = (await handler(makeEvent({ planKey: 'proactive' }))) as Result;
+    const result = (await handler(makeEvent({ planKey: 'protector' }))) as Result;
     expect(result.statusCode).toBe(400);
   });
 });
