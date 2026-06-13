@@ -19,7 +19,12 @@ export const handler = async (
 
   const metadata = metaResult.Item;
   if (!metadata) return error('NOT_FOUND', 'Thread not found', 404);
-  if (metadata['vetId'] !== vetId) return error('FORBIDDEN', 'Access denied', 403);
+  // Ask-a-Vet broadcast: an unassigned question is visible to every vet so any
+  // of them can read it and claim it by replying. Once claimed it is locked to
+  // the owning vet. Mirrors the access logic in vetSendMessage.
+  if (metadata['status'] !== 'unassigned' && metadata['vetId'] !== vetId) {
+    return error('FORBIDDEN', 'Access denied', 403);
+  }
 
   const [batchResult, msgResult] = await Promise.all([
     docClient.send(new BatchGetCommand({
