@@ -16,11 +16,11 @@ export const handler = async (
 
   const skPrefix = statusFilter ? `THREAD#${statusFilter}#` : 'THREAD#';
 
-  // The vet's own (claimed) threads live under VET#${vetId}. Unassigned
-  // Ask-a-Vet broadcast questions live in the shared QUEUE#ask_a_vet partition
-  // so every vet can see and claim them. Include the queue unless the caller is
-  // filtering by a concrete (non-unassigned) status.
-  const includeQueue = !statusFilter || statusFilter === 'unassigned';
+  // The vet's own private 1:1 threads live under VET#${vetId}. Shared Ask-a-Vet
+  // group questions live in the QUEUE#ask_a_vet partition (status open until
+  // closed) so every vet can see and reply to them. Include the queue unless the
+  // caller is filtering by a non-open status (e.g. closed).
+  const includeQueue = !statusFilter || statusFilter === 'open';
 
   const queries: Promise<{ Items?: Record<string, unknown>[] }>[] = [
     docClient.send(
@@ -41,7 +41,7 @@ export const handler = async (
           TableName: table,
           IndexName: 'GSI2',
           KeyConditionExpression: 'GSI2PK = :pk AND begins_with(GSI2SK, :prefix)',
-          ExpressionAttributeValues: { ':pk': 'QUEUE#ask_a_vet', ':prefix': 'THREAD#unassigned#' },
+          ExpressionAttributeValues: { ':pk': 'QUEUE#ask_a_vet', ':prefix': 'THREAD#open#' },
           ScanIndexForward: false,
           Limit: limit,
         }),

@@ -95,20 +95,21 @@ describe('getThread handler', () => {
     process.env['TABLE_NAME'] = 'furcircle-test';
   });
 
-  it('returns 200 with full thread and messages', async () => {
+  it('returns 200 with full thread, messages and participating vets', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: threadMeta })   // GetItem METADATA
       .mockResolvedValueOnce({ Items: messages })    // Query messages
-      .mockResolvedValueOnce({ Item: vetProfile })   // GetItem vet
       .mockResolvedValueOnce({ Item: dogProfile })   // GetItem dog
-      .mockResolvedValueOnce({ Item: ownerProfile }); // GetItem owner
+      .mockResolvedValueOnce({ Item: ownerProfile }) // GetItem owner
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [vetProfile] } }); // BatchGet vets
 
     const res = await handler(makeEvent('thread-1'));
     expect((res as { statusCode: number }).statusCode).toBe(200);
     const body = JSON.parse((res as { body: string }).body);
     expect(body.threadId).toBe('thread-1');
     expect(body.messages).toHaveLength(2);
-    expect(body.vet.specialisation).toBe('Puppy behaviour & early socialisation');
+    expect(body.vets).toHaveLength(1);
+    expect(body.vets[0].specialisation).toBe('Puppy behaviour & early socialisation');
     expect(body.dog.ageMonths).toBe(3);
     expect(body.dogProfileVisible).toBe(true);
   });
@@ -139,8 +140,7 @@ describe('getThread handler', () => {
   it('senderName is owner firstName for owner messages', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: threadMeta })
-      .mockResolvedValueOnce({ Items: [messages[0]] })
-      .mockResolvedValueOnce({ Item: vetProfile })
+      .mockResolvedValueOnce({ Items: [messages[0]] }) // owner-only page → no vet BatchGet
       .mockResolvedValueOnce({ Item: dogProfile })
       .mockResolvedValueOnce({ Item: ownerProfile });
 
@@ -152,10 +152,10 @@ describe('getThread handler', () => {
   it('senderName is "Dr. firstName lastName" for vet messages', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: threadMeta })
-      .mockResolvedValueOnce({ Items: [messages[1]] })
-      .mockResolvedValueOnce({ Item: vetProfile })
+      .mockResolvedValueOnce({ Items: [messages[1]] }) // vet message → triggers BatchGet
       .mockResolvedValueOnce({ Item: dogProfile })
-      .mockResolvedValueOnce({ Item: ownerProfile });
+      .mockResolvedValueOnce({ Item: ownerProfile })
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [vetProfile] } });
 
     const res = await handler(makeEvent('thread-1'));
     const body = JSON.parse((res as { body: string }).body);
@@ -166,7 +166,6 @@ describe('getThread handler', () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: threadMeta })
       .mockResolvedValueOnce({ Items: [] })
-      .mockResolvedValueOnce({ Item: vetProfile })
       .mockResolvedValueOnce({ Item: dogProfile })
       .mockResolvedValueOnce({ Item: ownerProfile });
 
@@ -180,7 +179,6 @@ describe('getThread handler', () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: threadMeta })
       .mockResolvedValueOnce({ Items: [messages[0]], LastEvaluatedKey: lastKey })
-      .mockResolvedValueOnce({ Item: vetProfile })
       .mockResolvedValueOnce({ Item: dogProfile })
       .mockResolvedValueOnce({ Item: ownerProfile });
 
@@ -193,12 +191,28 @@ describe('getThread handler', () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: threadMeta })
       .mockResolvedValueOnce({ Items: [] })
-      .mockResolvedValueOnce({ Item: vetProfile })
       .mockResolvedValueOnce({ Item: dogProfile })
       .mockResolvedValueOnce({ Item: ownerProfile });
 
     const res = await handler(makeEvent('thread-1'));
     const body = JSON.parse((res as { body: string }).body);
     expect(body.messages).toEqual([]);
+  });
+
+  it('resolves each vet sender independently in a multi-vet group thread', async () => {
+    const vet2 = { ...vetProfile, PK: 'VET#vet-456', vetId: 'vet-456', firstName: 'Tom', lastName: 'Reed' };
+    const vetMsg2 = { ...messages[1], SK: 'MSG#1713179500000#msg-3', messageId: 'msg-3', senderId: 'vet-456', body: 'I agree.' };
+    mockDocClientSend
+      .mockResolvedValueOnce({ Item: { ...threadMeta, vetId: null } })
+      .mockResolvedValueOnce({ Items: [messages[0], messages[1], vetMsg2] })
+      .mockResolvedValueOnce({ Item: dogProfile })
+      .mockResolvedValueOnce({ Item: ownerProfile })
+      .mockResolvedValueOnce({ Responses: { 'furcircle-test': [vetProfile, vet2] } });
+
+    const res = await handler(makeEvent('thread-1'));
+    const body = JSON.parse((res as { body: string }).body);
+    expect(body.vets).toHaveLength(2);
+    expect(body.messages[1].senderName).toBe('Dr. Sarah Mitchell');
+    expect(body.messages[2].senderName).toBe('Dr. Tom Reed');
   });
 });

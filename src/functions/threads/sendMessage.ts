@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, QueryCommand, BatchGetCommand } from '@aws-sdk/lib-dynamodb';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { v4 as uuidv4 } from 'uuid';
 import { docClient } from '../../lib/dynamodb';
@@ -57,21 +57,47 @@ export const handler = async (
     }),
   );
 
+  // Ask-a-Vet is a group chat: notify every vet who has replied to this thread.
+  // (A private 1:1 has just one such vet.) Vets who have not engaged are not
+  // pinged here — they were already alerted by the original question broadcast.
   try {
-    const { Item: vet } = await docClient.send(
-      new GetCommand({ TableName: table, Key: { PK: `VET#${metadata['vetId'] as string}`, SK: 'PROFILE' } }),
+    const msgResult = await docClient.send(
+      new QueryCommand({
+        TableName: table,
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :prefix)',
+        ExpressionAttributeValues: { ':pk': `THREAD#${threadId}`, ':prefix': 'MSG#' },
+        ProjectionExpression: 'senderId, senderType',
+      }),
     );
-    if (vet?.['pushToken']) {
-      await sns.send(
-        new PublishCommand({
-          TopicArn: topicArn,
-          Message: JSON.stringify({
-            type: 'NEW_MESSAGE',
-            threadId,
-            messageId,
-            pushToken: vet['pushToken'],
-          }),
+    const vetIds = [
+      ...new Set(
+        (msgResult.Items ?? [])
+          .filter((m) => m['senderType'] === 'vet' && m['senderId'])
+          .map((m) => m['senderId'] as string),
+      ),
+    ];
+
+    if (vetIds.length > 0) {
+      const batch = await docClient.send(
+        new BatchGetCommand({
+          RequestItems: {
+            [table]: { Keys: vetIds.map((id) => ({ PK: `VET#${id}`, SK: 'PROFILE' })) },
+          },
         }),
+      );
+      const tokens = (batch.Responses?.[table] ?? [])
+        .map((v) => v['pushToken'])
+        .filter((t): t is string => typeof t === 'string' && t.length > 0);
+
+      await Promise.all(
+        tokens.map((pushToken) =>
+          sns.send(
+            new PublishCommand({
+              TopicArn: topicArn,
+              Message: JSON.stringify({ type: 'NEW_MESSAGE', threadId, messageId, pushToken }),
+            }),
+          ),
+        ),
       );
     }
   } catch (err) {

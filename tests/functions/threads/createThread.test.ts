@@ -1,7 +1,7 @@
 /**
- * Unit tests for POST /threads (createThread) — Ask-a-Vet broadcast model.
- * A question is created unassigned and fanned out to all vets; the first vet
- * to reply claims it (see vetSendMessage).
+ * Unit tests for POST /threads (createThread) — Ask-a-Vet group-chat model.
+ * A question is created open and fanned out to all vets; any vet can read and
+ * reply (vetId stays null) until the thread is closed (see vetSendMessage).
  */
 
 const mockDocClientSend = jest.fn();
@@ -60,7 +60,7 @@ describe('createThread handler (broadcast)', () => {
     process.env['SNS_TOPIC_ARN'] = 'arn:aws:sns:us-east-1:123:furcircle-notifications-test';
   });
 
-  it('returns 201 with an unassigned thread and the first message', async () => {
+  it('returns 201 with an open thread and the first message', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: dogProfile })        // GetItem dog
       .mockResolvedValueOnce({ Item: ownerSubscription }) // GetItem subscription
@@ -73,7 +73,7 @@ describe('createThread handler (broadcast)', () => {
     expect((res as { statusCode: number }).statusCode).toBe(201);
     const body = JSON.parse((res as { body: string }).body);
     expect(body.threadId).toBe('test-thread-uuid');
-    expect(body.status).toBe('unassigned');
+    expect(body.status).toBe('open');
     expect(body.vetId).toBeNull();
     expect(body.messages).toHaveLength(1);
     expect(body.messages[0].senderType).toBe('owner');
@@ -141,7 +141,7 @@ describe('createThread handler (broadcast)', () => {
     expect((res as { statusCode: number }).statusCode).toBe(400);
   });
 
-  it('METADATA item is unassigned and placed in the shared broadcast queue', async () => {
+  it('METADATA item is open and placed in the shared queue', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Item: dogProfile })
       .mockResolvedValueOnce({ Item: ownerSubscription })
@@ -161,9 +161,9 @@ describe('createThread handler (broadcast)', () => {
     expect(item['GSI1PK']).toBe('OWNER#owner-123');
     expect((item['GSI1SK'] as string)).toMatch(/^THREAD#ask_a_vet#/);
     expect(item['GSI2PK']).toBe('QUEUE#ask_a_vet');
-    expect((item['GSI2SK'] as string)).toMatch(/^THREAD#unassigned#/);
+    expect((item['GSI2SK'] as string)).toMatch(/^THREAD#open#/);
     expect(item['vetId']).toBeNull();
-    expect(item['status']).toBe('unassigned');
+    expect(item['status']).toBe('open');
   });
 
   it('publishes a question_broadcast notification', async () => {

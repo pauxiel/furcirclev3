@@ -143,8 +143,8 @@ components:
       properties:
         threadId: { type: string }
         type: { type: string, enum: [ask_a_vet, post_booking] }
-        status: { type: string, enum: [unassigned, open, closed], description: ask_a_vet starts 'unassigned' and becomes 'open' when a vet claims it }
-        vetId: { type: string, nullable: true, description: Null until a vet claims the broadcast question }
+        status: { type: string, enum: [open, closed], description: ask_a_vet is a shared group chat — created 'open' and stays open until closed }
+        vetId: { type: string, nullable: true, description: Always null for ask_a_vet group threads (no single owning vet). Set only for private 1:1 threads }
         dogId: { type: string }
         createdAt: { type: string, format: date-time }
 
@@ -152,10 +152,22 @@ components:
       type: object
       properties:
         messageId: { type: string }
+        senderId: { type: string, description: User/vet id of the sender — distinguishes which vet replied in a group thread }
         senderType: { type: string, enum: [owner, vet] }
+        senderName: { type: string, description: Display name (owner-side responses only) — e.g. "Dr. Sarah Mitchell" }
         body: { type: string }
         readAt: { type: string, nullable: true, format: date-time }
         createdAt: { type: string, format: date-time }
+
+    VetSummary:
+      type: object
+      properties:
+        vetId: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        providerType: { type: string }
+        specialisation: { type: string, nullable: true }
+        photoUrl: { type: string, nullable: true }
 
     SubscriptionPlan:
       type: object
@@ -768,12 +780,14 @@ paths:
   /threads:
     post:
       tags: [Messaging]
-      summary: Ask a vet (broadcast)
+      summary: Ask a vet (group chat)
       description: >
         Posts an Ask-a-Vet question. The question is broadcast to all active
-        veterinarians (push + email); the first vet to reply claims the thread.
-        The owner does not choose a vet, so no vetId is supplied. The thread is
-        returned with status 'unassigned' and vetId null until claimed.
+        veterinarians (push + email) and becomes a shared group chat: any vet
+        can read and reply, and multiple vets may answer the one owner. The
+        owner does not choose a vet, so no vetId is supplied. The thread is
+        returned with status 'open' and vetId null, and stays in the shared
+        queue until it is closed.
       requestBody:
         required: true
         content:
@@ -787,7 +801,7 @@ paths:
                 initialMessage: { type: string, minLength: 1, maxLength: 2000 }
       responses:
         '201':
-          description: Unassigned thread created with the first message
+          description: Open thread created with the first message
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Thread' }
@@ -797,7 +811,7 @@ paths:
       parameters:
         - name: status
           in: query
-          schema: { type: string, enum: [unassigned, open, closed] }
+          schema: { type: string, enum: [open, closed] }
       responses:
         '200':
           description: Thread list
@@ -829,9 +843,14 @@ paths:
                   - $ref: '#/components/schemas/Thread'
                   - type: object
                     properties:
+                      vets:
+                        type: array
+                        description: Vets who have replied on this page of messages (a group thread may have several).
+                        items: { $ref: '#/components/schemas/VetSummary' }
                       messages:
                         type: array
                         items: { $ref: '#/components/schemas/Message' }
+                      nextToken: { type: string, nullable: true }
 
   /threads/{threadId}/messages:
     post:

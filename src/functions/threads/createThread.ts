@@ -29,9 +29,10 @@ export const handler = async (
   const table = process.env['TABLE_NAME']!;
   const topicArn = process.env['SNS_TOPIC_ARN']!;
 
-  // Ask-a-Vet is a broadcast: the question is created unassigned and fanned out
-  // to all vets. No single vet is chosen at creation — the first vet to reply
-  // claims the thread (see vetSendMessage). So we no longer look up a vet here.
+  // Ask-a-Vet is a shared group chat: the question is fanned out to all vets,
+  // and any vet can read and reply (vetId stays null). No single vet owns it.
+  // The thread stays in the shared queue until it is closed. So we don't look
+  // up a vet here.
   const [dogResult, subResult] = await Promise.all([
     docClient.send(new GetCommand({ TableName: table, Key: { PK: `DOG#${dogId}`, SK: 'PROFILE' } })),
     docClient.send(new GetCommand({ TableName: table, Key: { PK: `OWNER#${userId}`, SK: 'SUBSCRIPTION' } })),
@@ -76,16 +77,16 @@ export const handler = async (
           SK: 'METADATA',
           GSI1PK: `OWNER#${userId}`,
           GSI1SK: `THREAD#ask_a_vet#${now}`,
-          // Shared broadcast partition — every vet queries QUEUE#ask_a_vet for
-          // unassigned questions. On claim this flips to VET#${claimerId}.
+          // Shared queue partition — every vet queries QUEUE#ask_a_vet for open
+          // questions and any of them can reply. Stays here until closed.
           GSI2PK: 'QUEUE#ask_a_vet',
-          GSI2SK: `THREAD#unassigned#${now}`,
+          GSI2SK: `THREAD#open#${now}`,
           threadId,
           ownerId: userId,
           vetId: null,
           dogId,
           type: 'ask_a_vet',
-          status: 'unassigned',
+          status: 'open',
           createdAt: now,
           closedAt: null,
         },
@@ -135,7 +136,7 @@ export const handler = async (
       vetId: null,
       dogId,
       type: 'ask_a_vet',
-      status: 'unassigned',
+      status: 'open',
       messages: [
         {
           messageId,

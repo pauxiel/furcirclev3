@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { v4 as uuidv4 } from 'uuid';
 import { docClient } from '../../lib/dynamodb';
@@ -37,34 +37,10 @@ export const handler = async (
   if (!metadata) return error('NOT_FOUND', 'Thread not found', 404);
   if (metadata['status'] === 'closed') return error('THREAD_CLOSED', 'Thread is closed', 403);
 
-  // Ask-a-Vet broadcast: an unassigned question is claimed by the first vet to
-  // reply. The conditional update guards against a race — only one vet wins.
-  if (metadata['status'] === 'unassigned') {
-    const createdAt = (metadata['createdAt'] as string) ?? new Date().toISOString();
-    try {
-      await docClient.send(
-        new UpdateCommand({
-          TableName: table,
-          Key: { PK: `THREAD#${threadId}`, SK: 'METADATA' },
-          UpdateExpression: 'SET vetId = :v, #s = :open, GSI2PK = :gpk, GSI2SK = :gsk',
-          ConditionExpression: '#s = :unassigned',
-          ExpressionAttributeNames: { '#s': 'status' },
-          ExpressionAttributeValues: {
-            ':v': vetId,
-            ':open': 'open',
-            ':unassigned': 'unassigned',
-            ':gpk': `VET#${vetId}`,
-            ':gsk': `THREAD#open#${createdAt}`,
-          },
-        }),
-      );
-    } catch (err) {
-      if ((err as Error).name === 'ConditionalCheckFailedException') {
-        return error('ALREADY_CLAIMED', 'This question was already claimed by another vet', 409);
-      }
-      throw err;
-    }
-  } else if (metadata['vetId'] !== vetId) {
+  // Ask-a-Vet is a shared group chat: a thread with vetId === null is open to
+  // every vet, so any of them can reply (no claim). A thread with a concrete
+  // vetId is a private 1:1 conversation locked to that vet.
+  if (metadata['vetId'] != null && metadata['vetId'] !== vetId) {
     return error('FORBIDDEN', 'Access denied', 403);
   }
 

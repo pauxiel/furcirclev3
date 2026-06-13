@@ -22,7 +22,11 @@ export const handler = async (
   );
 
   if (!metadata) return error('NOT_FOUND', 'Thread not found', 404);
-  if (metadata['vetId'] !== vetId) return error('FORBIDDEN', 'Access denied', 403);
+  // Group thread (vetId === null) can be closed by any vet; a private 1:1 only
+  // by its assigned vet.
+  if (metadata['vetId'] != null && metadata['vetId'] !== vetId) {
+    return error('FORBIDDEN', 'Access denied', 403);
+  }
   if (metadata['status'] === 'closed') return error('ALREADY_CLOSED', 'Thread is already closed', 400);
 
   const closedAt = new Date().toISOString();
