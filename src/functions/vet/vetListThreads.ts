@@ -1,12 +1,13 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { QueryCommand, BatchGetCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../../lib/dynamodb';
-import { success } from '../../lib/response';
-import { getUserId } from '../../lib/auth';
+import { success, error } from '../../lib/response';
+import { getUserId, isVet } from '../../lib/auth';
 
 export const handler = async (
   event: APIGatewayProxyEventV2WithJWTAuthorizer,
 ): Promise<APIGatewayProxyResultV2> => {
+  if (!isVet(event)) return error('FORBIDDEN', 'Vet access required', 403);
   const vetId = getUserId(event);
   const table = process.env['TABLE_NAME']!;
   const qs = event.queryStringParameters ?? {};
@@ -16,11 +17,11 @@ export const handler = async (
 
   const skPrefix = statusFilter ? `THREAD#${statusFilter}#` : 'THREAD#';
 
-  // The vet's own (claimed) threads live under VET#${vetId}. Unassigned
-  // Ask-a-Vet broadcast questions live in the shared QUEUE#ask_a_vet partition
-  // so every vet can see and claim them. Include the queue unless the caller is
-  // filtering by a concrete (non-unassigned) status.
-  const includeQueue = !statusFilter || statusFilter === 'unassigned';
+  // The vet's own private 1:1 threads live under VET#${vetId}. Shared Ask-a-Vet
+  // group questions live in the QUEUE#ask_a_vet partition (status open until
+  // closed) so every vet can see and reply to them. Include the queue unless the
+  // caller is filtering by a non-open status (e.g. closed).
+  const includeQueue = !statusFilter || statusFilter === 'open';
 
   const queries: Promise<{ Items?: Record<string, unknown>[] }>[] = [
     docClient.send(
@@ -41,7 +42,7 @@ export const handler = async (
           TableName: table,
           IndexName: 'GSI2',
           KeyConditionExpression: 'GSI2PK = :pk AND begins_with(GSI2SK, :prefix)',
-          ExpressionAttributeValues: { ':pk': 'QUEUE#ask_a_vet', ':prefix': 'THREAD#unassigned#' },
+          ExpressionAttributeValues: { ':pk': 'QUEUE#ask_a_vet', ':prefix': 'THREAD#open#' },
           ScanIndexForward: false,
           Limit: limit,
         }),

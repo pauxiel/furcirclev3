@@ -20,7 +20,7 @@ const makeEvent = (threadId: string, body: Record<string, unknown>, vetId = 'vet
     pathParameters: { threadId },
     body: JSON.stringify(body),
     requestContext: {
-      authorizer: { jwt: { claims: { sub: vetId }, scopes: [] }, principalId: '', integrationLatency: 0 },
+      authorizer: { jwt: { claims: { sub: vetId, 'cognito:groups': 'vets' }, scopes: [] }, principalId: '', integrationLatency: 0 },
     },
   } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer);
 
@@ -29,16 +29,11 @@ const openThread = {
   threadId: 'thread-1', status: 'open', ownerId: 'owner-1', vetId: 'vet-123', dogId: 'dog-1',
 };
 
-const unassignedThread = {
+// Ask-a-Vet group thread: shared, no owning vet (vetId === null).
+const groupThread = {
   PK: 'THREAD#thread-1', SK: 'METADATA',
-  threadId: 'thread-1', status: 'unassigned', ownerId: 'owner-1', vetId: null, dogId: 'dog-1',
+  threadId: 'thread-1', status: 'open', ownerId: 'owner-1', vetId: null, dogId: 'dog-1',
   createdAt: '2026-01-01T00:00:00.000Z',
-};
-
-const conditionalFail = (): Error => {
-  const e = new Error('The conditional request failed');
-  e.name = 'ConditionalCheckFailedException';
-  return e;
 };
 
 describe('vetSendMessage handler', () => {
@@ -47,6 +42,22 @@ describe('vetSendMessage handler', () => {
     process.env['TABLE_NAME'] = 'furcircle-test';
     process.env['SNS_TOPIC_ARN'] = 'arn:aws:sns:us-east-1:123:test';
     mockSnsSend.mockResolvedValue({});
+  });
+
+  it('returns 403 when caller is not in the vets group', async () => {
+    const nonVetEvent = {
+      pathParameters: { threadId: 'thread-1' },
+      body: JSON.stringify({ body: 'I am an owner pretending to be a vet' }),
+      requestContext: {
+        authorizer: { jwt: { claims: { sub: 'owner-1', 'cognito:groups': 'owners' }, scopes: [] }, principalId: '', integrationLatency: 0 },
+      },
+    } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer;
+
+    const res = (await handler(nonVetEvent)) as Result;
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body).error).toBe('FORBIDDEN');
+    // Rejected before any DynamoDB access.
+    expect(mockDocClientSend).not.toHaveBeenCalled();
   });
 
   it('returns 400 when body is empty', async () => {
@@ -90,31 +101,30 @@ describe('vetSendMessage handler', () => {
     expect(body.body).toBe('Hi Joshua!');
   });
 
-  it('claims an unassigned (broadcast) thread on first reply', async () => {
+  it('lets any vet reply to a shared group thread without claiming it', async () => {
     mockDocClientSend
-      .mockResolvedValueOnce({ Item: unassignedThread }) // Get metadata
-      .mockResolvedValueOnce({})                          // conditional claim Update
-      .mockResolvedValueOnce({});                         // Put message
+      .mockResolvedValueOnce({ Item: groupThread }) // Get metadata
+      .mockResolvedValueOnce({});                   // Put message
 
-    const res = (await handler(makeEvent('thread-1', { body: 'Happy to help!' }))) as Result;
+    const res = (await handler(makeEvent('thread-1', { body: 'Happy to help!' }, 'vet-999'))) as Result;
     expect(res.statusCode).toBe(201);
 
-    // the claim is a conditional update that assigns this vet + flips the queue
-    const claim = mockDocClientSend.mock.calls[1][0];
-    const input = (claim.input ?? claim) as Record<string, any>;
-    expect(input.UpdateExpression).toMatch(/vetId/);
-    expect(input.ConditionExpression).toBeDefined();
-    expect(input.ExpressionAttributeValues[':v']).toBe('vet-123');
-    expect(input.ExpressionAttributeValues[':gpk']).toBe('VET#vet-123');
+    // No claim: the only writes are the Get (metadata) and the Put (message);
+    // the thread metadata is never updated to assign a vet.
+    expect(mockDocClientSend).toHaveBeenCalledTimes(2);
+    const put = mockDocClientSend.mock.calls[1][0];
+    const input = (put.input ?? put) as Record<string, any>;
+    expect(input.Item.senderType).toBe('vet');
+    expect(input.Item.senderId).toBe('vet-999');
   });
 
-  it('returns 409 ALREADY_CLAIMED when another vet claimed first', async () => {
+  it('lets a second vet also reply to the same group thread', async () => {
     mockDocClientSend
-      .mockResolvedValueOnce({ Item: unassignedThread }) // Get metadata
-      .mockRejectedValueOnce(conditionalFail());          // claim loses the race
+      .mockResolvedValueOnce({ Item: groupThread }) // Get metadata
+      .mockResolvedValueOnce({});                   // Put message
 
-    const res = (await handler(makeEvent('thread-1', { body: 'Me first!' }))) as Result;
-    expect(res.statusCode).toBe(409);
-    expect(JSON.parse(res.body).error).toBe('ALREADY_CLAIMED');
+    const res = (await handler(makeEvent('thread-1', { body: 'Adding to that...' }, 'vet-888'))) as Result;
+    expect(res.statusCode).toBe(201);
+    expect(JSON.parse(res.body).senderType).toBe('vet');
   });
 });

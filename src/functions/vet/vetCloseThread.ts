@@ -3,13 +3,14 @@ import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { docClient } from '../../lib/dynamodb';
 import { success, error } from '../../lib/response';
-import { getUserId } from '../../lib/auth';
+import { getUserId, isVet } from '../../lib/auth';
 
 const sns = new SNSClient({});
 
 export const handler = async (
   event: APIGatewayProxyEventV2WithJWTAuthorizer,
 ): Promise<APIGatewayProxyResultV2> => {
+  if (!isVet(event)) return error('FORBIDDEN', 'Vet access required', 403);
   const vetId = getUserId(event);
   const table = process.env['TABLE_NAME']!;
   const topicArn = process.env['SNS_TOPIC_ARN']!;
@@ -22,7 +23,11 @@ export const handler = async (
   );
 
   if (!metadata) return error('NOT_FOUND', 'Thread not found', 404);
-  if (metadata['vetId'] !== vetId) return error('FORBIDDEN', 'Access denied', 403);
+  // Group thread (vetId === null) can be closed by any vet; a private 1:1 only
+  // by its assigned vet.
+  if (metadata['vetId'] != null && metadata['vetId'] !== vetId) {
+    return error('FORBIDDEN', 'Access denied', 403);
+  }
   if (metadata['status'] === 'closed') return error('ALREADY_CLOSED', 'Thread is already closed', 400);
 
   const closedAt = new Date().toISOString();

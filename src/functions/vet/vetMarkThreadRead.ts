@@ -2,11 +2,12 @@ import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 }
 import { GetCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../../lib/dynamodb';
 import { success, error } from '../../lib/response';
-import { getUserId } from '../../lib/auth';
+import { getUserId, isVet } from '../../lib/auth';
 
 export const handler = async (
   event: APIGatewayProxyEventV2WithJWTAuthorizer,
 ): Promise<APIGatewayProxyResultV2> => {
+  if (!isVet(event)) return error('FORBIDDEN', 'Vet access required', 403);
   const vetId = getUserId(event);
   const table = process.env['TABLE_NAME']!;
   const threadId = event.pathParameters?.['threadId'];
@@ -18,7 +19,11 @@ export const handler = async (
   );
 
   if (!metadata) return error('NOT_FOUND', 'Thread not found', 404);
-  if (metadata['vetId'] !== vetId) return error('FORBIDDEN', 'Access denied', 403);
+  // Group thread (vetId === null) is readable by any vet; a private 1:1 only by
+  // its assigned vet.
+  if (metadata['vetId'] != null && metadata['vetId'] !== vetId) {
+    return error('FORBIDDEN', 'Access denied', 403);
+  }
 
   const msgResult = await docClient.send(
     new QueryCommand({

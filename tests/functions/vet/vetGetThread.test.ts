@@ -13,7 +13,7 @@ const makeEvent = (threadId: string, vetId = 'vet-123'): APIGatewayProxyEventV2W
   ({
     pathParameters: { threadId },
     requestContext: {
-      authorizer: { jwt: { claims: { sub: vetId }, scopes: [] }, principalId: '', integrationLatency: 0 },
+      authorizer: { jwt: { claims: { sub: vetId, 'cognito:groups': 'vets' }, scopes: [] }, principalId: '', integrationLatency: 0 },
     },
   } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer);
 
@@ -50,6 +50,20 @@ describe('vetGetThread handler', () => {
     const res = (await handler(makeEvent('thread-1'))) as Result;
     expect(res.statusCode).toBe(403);
     expect(JSON.parse(res.body).error).toBe('FORBIDDEN');
+  });
+
+  it('returns 200 for an unassigned broadcast thread to any vet', async () => {
+    mockDocClientSend.mockResolvedValueOnce({
+      Item: { ...threadMeta, status: 'unassigned', vetId: null },
+    });
+    mockDocClientSend.mockResolvedValueOnce({
+      Responses: { 'furcircle-test': [ownerProfile, ownerSub, dogProfile] },
+    });
+    mockDocClientSend.mockResolvedValueOnce({ Items: messages });
+
+    const res = (await handler(makeEvent('thread-1', 'any-other-vet'))) as Result;
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).status).toBe('unassigned');
   });
 
   it('returns 200 with full thread context', async () => {

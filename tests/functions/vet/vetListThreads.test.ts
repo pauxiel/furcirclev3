@@ -13,7 +13,7 @@ const makeEvent = (qs: Record<string, string> = {}, vetId = 'vet-123'): APIGatew
   ({
     queryStringParameters: qs,
     requestContext: {
-      authorizer: { jwt: { claims: { sub: vetId }, scopes: [] }, principalId: '', integrationLatency: 0 },
+      authorizer: { jwt: { claims: { sub: vetId, 'cognito:groups': 'vets' }, scopes: [] }, principalId: '', integrationLatency: 0 },
     },
   } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer);
 
@@ -25,12 +25,13 @@ const threadMeta = {
   GSI2PK: 'VET#vet-123', GSI2SK: 'THREAD#open#2026-04-15T10:00:00Z',
 };
 
-const unassignedMeta = {
+// Shared Ask-a-Vet group question: lives in the queue (vetId null) until closed.
+const queueMeta = {
   PK: 'THREAD#thread-2', SK: 'METADATA',
-  threadId: 'thread-2', type: 'ask_a_vet', status: 'unassigned',
+  threadId: 'thread-2', type: 'ask_a_vet', status: 'open',
   ownerId: 'owner-2', vetId: null, dogId: 'dog-2',
   createdAt: '2026-04-16T09:00:00Z',
-  GSI2PK: 'QUEUE#ask_a_vet', GSI2SK: 'THREAD#unassigned#2026-04-16T09:00:00Z',
+  GSI2PK: 'QUEUE#ask_a_vet', GSI2SK: 'THREAD#open#2026-04-16T09:00:00Z',
 };
 
 const ownerProfile = { PK: 'OWNER#owner-1', SK: 'PROFILE', userId: 'owner-1', firstName: 'Joshua', lastName: 'Smith' };
@@ -88,10 +89,10 @@ describe('vetListThreads handler', () => {
     expect(JSON.parse(res.body).threads[0].isPriority).toBe(false);
   });
 
-  it('includes unassigned broadcast questions from the shared queue', async () => {
+  it('includes open group questions from the shared queue', async () => {
     mockDocClientSend
-      .mockResolvedValueOnce({ Items: [] })             // own — none
-      .mockResolvedValueOnce({ Items: [unassignedMeta] }) // queue — one unclaimed
+      .mockResolvedValueOnce({ Items: [] })          // own — none
+      .mockResolvedValueOnce({ Items: [queueMeta] }) // queue — one open group question
       .mockResolvedValueOnce({ Responses: { 'furcircle-test': [owner2, dog2] } })
       .mockResolvedValueOnce({ Items: [] });
 
@@ -99,16 +100,16 @@ describe('vetListThreads handler', () => {
     const body = JSON.parse(res.body);
     expect(body.threads).toHaveLength(1);
     expect(body.threads[0].threadId).toBe('thread-2');
-    expect(body.threads[0].status).toBe('unassigned');
+    expect(body.threads[0].status).toBe('open');
   });
 
-  it('does not query the shared queue when filtering by a concrete status', async () => {
+  it('does not query the shared queue when filtering by a non-open status', async () => {
     mockDocClientSend
       .mockResolvedValueOnce({ Items: [threadMeta] }) // own only
       .mockResolvedValueOnce({ Responses: { 'furcircle-test': [ownerProfile, dogProfile, ownerSub] } })
       .mockResolvedValueOnce({ Items: [lastMsg] });
 
-    const res = (await handler(makeEvent({ status: 'open' }))) as Result;
+    const res = (await handler(makeEvent({ status: 'closed' }))) as Result;
     expect(res.statusCode).toBe(200);
     const firstQuery = mockDocClientSend.mock.calls[0][0];
     const input = (firstQuery.input ?? firstQuery) as Record<string, any>;

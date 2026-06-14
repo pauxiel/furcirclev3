@@ -1,8 +1,40 @@
 # ADR: Ask-a-Vet broadcast with claim-on-reply
 
-- **Status:** Accepted
+- **Status:** Superseded (2026-06-13) — see "Superseding decision" below
 - **Date:** 2026-06-08
 - **Context phase:** Phase 9 — provider split + notifications
+
+> ## Superseding decision (2026-06-13): shared group chat, no claim
+>
+> The founder revised the model again: Ask-a-Vet should be a **shared group
+> chat**, not an exclusive claim. **Multiple vets** can read and answer the same
+> question for the one owner — there is no "first vet wins" lock.
+>
+> **What changed:**
+> - Threads are created with `status: 'open'` (not `'unassigned'`) and
+>   `GSI2SK = THREAD#open#${createdAt}`. `vetId` stays `null` permanently for
+>   group threads — no vet "owns" the conversation.
+> - `vetSendMessage` no longer claims: the conditional update, the
+>   `vetId`/`GSI2PK` flip, and the `409 ALREADY_CLAIMED` race response are
+>   removed. Any vet may post while `vetId === null`; a concrete `vetId` (private
+>   1:1) is still locked to that vet.
+> - The thread stays in the `QUEUE#ask_a_vet` partition (visible to every vet)
+>   until it is **closed** — `vetCloseThread` flips `GSI2SK` to
+>   `THREAD#closed#…`, which removes it from the open queue. Any vet may close a
+>   group thread.
+> - `vetGetThread` / `vetMarkThreadRead` gate on `vetId == null || vetId === me`
+>   instead of status.
+> - `vetListThreads` queues on the `THREAD#open#` prefix and includes the queue
+>   unless filtering by a non-open status.
+> - Owner `getThread` resolves **every** vet sender on the page (BatchGet) and
+>   returns a `vets[]` array; each message carries its author's `senderName`.
+> - Owner `sendMessage` notifies **all** vets who have replied to the thread,
+>   not a single assigned vet.
+> - Contract: thread `status` enum is now `[open, closed]`; `409 ALREADY_CLAIMED`
+>   is gone (OpenAPI updated).
+>
+> The "Context" and "Alternatives considered" below remain useful history; the
+> "Decision" section reflects the prior claim-on-reply model, now replaced.
 
 ## Context
 

@@ -2,11 +2,12 @@ import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 }
 import { GetCommand, BatchGetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../../lib/dynamodb';
 import { success, error } from '../../lib/response';
-import { getUserId } from '../../lib/auth';
+import { getUserId, isVet } from '../../lib/auth';
 
 export const handler = async (
   event: APIGatewayProxyEventV2WithJWTAuthorizer,
 ): Promise<APIGatewayProxyResultV2> => {
+  if (!isVet(event)) return error('FORBIDDEN', 'Vet access required', 403);
   const vetId = getUserId(event);
   const table = process.env['TABLE_NAME']!;
   const threadId = event.pathParameters?.['threadId'];
@@ -19,7 +20,13 @@ export const handler = async (
 
   const metadata = metaResult.Item;
   if (!metadata) return error('NOT_FOUND', 'Thread not found', 404);
-  if (metadata['vetId'] !== vetId) return error('FORBIDDEN', 'Access denied', 403);
+  // Ask-a-Vet is a shared group chat: a thread with vetId === null is visible to
+  // every vet so any of them can read and reply. A thread with a concrete vetId
+  // is a private 1:1 locked to that vet. Mirrors the access logic in
+  // vetSendMessage.
+  if (metadata['vetId'] != null && metadata['vetId'] !== vetId) {
+    return error('FORBIDDEN', 'Access denied', 403);
+  }
 
   const [batchResult, msgResult] = await Promise.all([
     docClient.send(new BatchGetCommand({
@@ -65,6 +72,7 @@ export const handler = async (
       : null,
     messages: messages.map((m) => ({
       messageId: m['messageId'],
+      senderId: m['senderId'],
       senderType: m['senderType'],
       body: m['body'],
       readAt: m['readAt'] ?? null,

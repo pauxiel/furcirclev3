@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, QueryCommand, BatchGetCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../../lib/dynamodb';
 import { success, error } from '../../lib/response';
 import { getUserId } from '../../lib/auth';
@@ -24,10 +24,9 @@ export const handler = async (
   if (!metadata) return error('THREAD_NOT_FOUND', 'Thread not found', 404);
   if (metadata['ownerId'] !== userId) return error('FORBIDDEN', 'Access denied', 403);
 
-  const vetId = metadata['vetId'] as string;
   const dogId = metadata['dogId'] as string;
 
-  const [messagesResult, vetResult, dogResult, ownerResult] = await Promise.all([
+  const [messagesResult, dogResult, ownerResult] = await Promise.all([
     docClient.send(
       new QueryCommand({
         TableName: table,
@@ -41,17 +40,40 @@ export const handler = async (
         ExclusiveStartKey: nextToken ? decodeCursor(nextToken) : undefined,
       }),
     ),
-    docClient.send(new GetCommand({ TableName: table, Key: { PK: `VET#${vetId}`, SK: 'PROFILE' } })),
     docClient.send(new GetCommand({ TableName: table, Key: { PK: `DOG#${dogId}`, SK: 'PROFILE' } })),
     docClient.send(new GetCommand({ TableName: table, Key: { PK: `OWNER#${userId}`, SK: 'PROFILE' } })),
   ]);
 
-  const vet = vetResult.Item ?? null;
   const dog = dogResult.Item ?? null;
   const owner = ownerResult.Item ?? null;
   const rawMessages = messagesResult.Items ?? [];
 
+  // Ask-a-Vet is a group chat: several vets may have replied. Resolve every vet
+  // who sent a message on this page so each message can be labelled with its
+  // author, and expose the set of participating vets.
+  const vetIds = [
+    ...new Set(
+      rawMessages
+        .filter((m) => m['senderType'] === 'vet' && m['senderId'])
+        .map((m) => m['senderId'] as string),
+    ),
+  ];
+  const vetMap: Record<string, Record<string, unknown>> = {};
+  if (vetIds.length > 0) {
+    const batch = await docClient.send(
+      new BatchGetCommand({
+        RequestItems: {
+          [table]: { Keys: vetIds.map((id) => ({ PK: `VET#${id}`, SK: 'PROFILE' })) },
+        },
+      }),
+    );
+    for (const v of batch.Responses?.[table] ?? []) {
+      vetMap[v['vetId'] as string] = v;
+    }
+  }
+
   const messages = rawMessages.map((m) => {
+    const vet = m['senderType'] === 'vet' ? vetMap[m['senderId'] as string] : undefined;
     const senderName =
       m['senderType'] === 'vet'
         ? `Dr. ${vet?.['firstName'] ?? ''} ${vet?.['lastName'] ?? ''}`.trim()
@@ -68,20 +90,23 @@ export const handler = async (
     };
   });
 
+  const vets = vetIds
+    .map((id) => vetMap[id])
+    .filter((v): v is Record<string, unknown> => v != null)
+    .map((v) => ({
+      vetId: v['vetId'],
+      firstName: v['firstName'],
+      lastName: v['lastName'],
+      providerType: v['providerType'],
+      specialisation: v['specialisation'] ?? null,
+      photoUrl: v['photoUrl'] ?? null,
+    }));
+
   return success({
     threadId,
     type: metadata['type'],
     status: metadata['status'],
-    vet: vet
-      ? {
-          vetId: vet['vetId'],
-          firstName: vet['firstName'],
-          lastName: vet['lastName'],
-          providerType: vet['providerType'],
-          specialisation: vet['specialisation'] ?? null,
-          photoUrl: vet['photoUrl'] ?? null,
-        }
-      : null,
+    vets,
     dog: dog
       ? { dogId: dog['dogId'], name: dog['name'], breed: dog['breed'], ageMonths: dog['ageMonths'] }
       : null,

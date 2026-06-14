@@ -3,7 +3,7 @@ import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../../lib/dynamodb';
 import { generateRtcToken } from '../../lib/agora';
 import { success, error } from '../../lib/response';
-import { getUserId } from '../../lib/auth';
+import { getUserId, isVet } from '../../lib/auth';
 
 const JOIN_WINDOW_MS = 30 * 60 * 1000;
 const TOKEN_EXPIRY_SECONDS = 3600;
@@ -19,6 +19,7 @@ const hashUserId = (userId: string): number => {
 export const handler = async (
   event: APIGatewayProxyEventV2WithJWTAuthorizer,
 ): Promise<APIGatewayProxyResultV2> => {
+  if (!isVet(event)) return error('FORBIDDEN', 'Vet access required', 403);
   const vetId = getUserId(event);
   const table = process.env['TABLE_NAME']!;
   const bookingId = event.pathParameters?.['bookingId'];

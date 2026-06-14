@@ -13,7 +13,7 @@ const makeEvent = (assessmentId: string, vetId = 'vet-123'): APIGatewayProxyEven
   ({
     pathParameters: { assessmentId },
     requestContext: {
-      authorizer: { jwt: { claims: { sub: vetId }, scopes: [] }, principalId: '', integrationLatency: 0 },
+      authorizer: { jwt: { claims: { sub: vetId, 'cognito:groups': 'vets' }, scopes: [] }, principalId: '', integrationLatency: 0 },
     },
   } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer);
 
@@ -60,7 +60,7 @@ describe('vetGetAssessment handler', () => {
   it('returns 400 when assessmentId missing', async () => {
     const event = {
       pathParameters: {},
-      requestContext: { authorizer: { jwt: { claims: { sub: 'vet-123' }, scopes: [] }, principalId: '', integrationLatency: 0 } },
+      requestContext: { authorizer: { jwt: { claims: { sub: 'vet-123', 'cognito:groups': 'vets' }, scopes: [] }, principalId: '', integrationLatency: 0 } },
     } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer;
 
     const res = (await handler(event)) as Result;

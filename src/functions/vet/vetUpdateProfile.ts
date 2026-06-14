@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2WithJWTAuthorizer, APIGatewayProxyResultV2 }
 import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../../lib/dynamodb';
 import { success, error } from '../../lib/response';
-import { getUserId } from '../../lib/auth';
+import { getUserId, isVet } from '../../lib/auth';
 
 const ALLOWED_FIELDS = ['bio', 'specialisation', 'isActive', 'pushToken'] as const;
 type AllowedField = (typeof ALLOWED_FIELDS)[number];
@@ -10,6 +10,7 @@ type AllowedField = (typeof ALLOWED_FIELDS)[number];
 export const handler = async (
   event: APIGatewayProxyEventV2WithJWTAuthorizer,
 ): Promise<APIGatewayProxyResultV2> => {
+  if (!isVet(event)) return error('FORBIDDEN', 'Vet access required', 403);
   const vetId = getUserId(event);
   const table = process.env['TABLE_NAME']!;
 
