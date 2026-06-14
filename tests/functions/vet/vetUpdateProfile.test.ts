@@ -14,7 +14,7 @@ const makeEvent = (body: Record<string, unknown>, vetId = 'vet-123'): APIGateway
     body: JSON.stringify(body),
     pathParameters: {},
     requestContext: {
-      authorizer: { jwt: { claims: { sub: vetId }, scopes: [] }, principalId: '', integrationLatency: 0 },
+      authorizer: { jwt: { claims: { sub: vetId, 'cognito:groups': 'vets' }, scopes: [] }, principalId: '', integrationLatency: 0 },
     },
   } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer);
 
@@ -45,7 +45,7 @@ describe('vetUpdateProfile handler', () => {
     const event = {
       body: 'not-json',
       requestContext: {
-        authorizer: { jwt: { claims: { sub: 'vet-123' }, scopes: [] }, principalId: '', integrationLatency: 0 },
+        authorizer: { jwt: { claims: { sub: 'vet-123', 'cognito:groups': 'vets' }, scopes: [] }, principalId: '', integrationLatency: 0 },
       },
     } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer;
 

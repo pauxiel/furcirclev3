@@ -7,9 +7,17 @@ export const getUserId = (event: APIGatewayProxyEventV2WithJWTAuthorizer): strin
 export const getUserGroups = (event: APIGatewayProxyEventV2WithJWTAuthorizer): string[] => {
   const raw = event.requestContext.authorizer.jwt.claims['cognito:groups'];
   if (!raw) return [];
-  // API Gateway serialises array claims as comma-separated strings
-  return String(raw).split(',').map((g) => g.trim()).filter(Boolean);
+  // The HTTP API JWT authorizer serialises the array claim as a bracketed,
+  // whitespace-delimited string (e.g. "[vets owners]"). Handle that plus the
+  // comma-separated form and a genuine array, so group checks are robust.
+  const parts = Array.isArray(raw)
+    ? raw.map(String)
+    : String(raw).replace(/^\[/, '').replace(/\]$/, '').split(/[\s,]+/);
+  return parts.map((g) => g.trim()).filter(Boolean);
 };
 
 export const isAdmin = (event: APIGatewayProxyEventV2WithJWTAuthorizer): boolean =>
   getUserGroups(event).includes('admins');
+
+export const isVet = (event: APIGatewayProxyEventV2WithJWTAuthorizer): boolean =>
+  getUserGroups(event).includes('vets');

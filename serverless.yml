@@ -445,6 +445,7 @@ functions:
       - Effect: Allow
         Action:
           - dynamodb:GetItem
+          - dynamodb:BatchGetItem
           - dynamodb:Query
         Resource: !GetAtt FurcircleTable.Arn
 
@@ -460,7 +461,9 @@ functions:
       - Effect: Allow
         Action:
           - dynamodb:GetItem
+          - dynamodb:BatchGetItem
           - dynamodb:PutItem
+          - dynamodb:Query
         Resource: !GetAtt FurcircleTable.Arn
       - Effect: Allow
         Action:

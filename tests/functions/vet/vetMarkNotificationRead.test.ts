@@ -14,7 +14,7 @@ const makeEvent = (vetId = 'vet-1', notifId = 'notif-1'): APIGatewayProxyEventV2
     pathParameters: { notifId },
     queryStringParameters: {},
     requestContext: {
-      authorizer: { jwt: { claims: { sub: vetId }, scopes: [] }, principalId: '', integrationLatency: 0 },
+      authorizer: { jwt: { claims: { sub: vetId, 'cognito:groups': 'vets' }, scopes: [] }, principalId: '', integrationLatency: 0 },
     },
   } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer);
 

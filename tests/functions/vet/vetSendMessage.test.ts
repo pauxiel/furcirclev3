@@ -20,7 +20,7 @@ const makeEvent = (threadId: string, body: Record<string, unknown>, vetId = 'vet
     pathParameters: { threadId },
     body: JSON.stringify(body),
     requestContext: {
-      authorizer: { jwt: { claims: { sub: vetId }, scopes: [] }, principalId: '', integrationLatency: 0 },
+      authorizer: { jwt: { claims: { sub: vetId, 'cognito:groups': 'vets' }, scopes: [] }, principalId: '', integrationLatency: 0 },
     },
   } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer);
 
@@ -42,6 +42,22 @@ describe('vetSendMessage handler', () => {
     process.env['TABLE_NAME'] = 'furcircle-test';
     process.env['SNS_TOPIC_ARN'] = 'arn:aws:sns:us-east-1:123:test';
     mockSnsSend.mockResolvedValue({});
+  });
+
+  it('returns 403 when caller is not in the vets group', async () => {
+    const nonVetEvent = {
+      pathParameters: { threadId: 'thread-1' },
+      body: JSON.stringify({ body: 'I am an owner pretending to be a vet' }),
+      requestContext: {
+        authorizer: { jwt: { claims: { sub: 'owner-1', 'cognito:groups': 'owners' }, scopes: [] }, principalId: '', integrationLatency: 0 },
+      },
+    } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer;
+
+    const res = (await handler(nonVetEvent)) as Result;
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body).error).toBe('FORBIDDEN');
+    // Rejected before any DynamoDB access.
+    expect(mockDocClientSend).not.toHaveBeenCalled();
   });
 
   it('returns 400 when body is empty', async () => {

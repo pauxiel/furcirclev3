@@ -13,7 +13,7 @@ const makeEvent = (qs: Record<string, string>, vetId = 'vet-123'): APIGatewayPro
   ({
     queryStringParameters: qs,
     requestContext: {
-      authorizer: { jwt: { claims: { sub: vetId }, scopes: [] }, principalId: '', integrationLatency: 0 },
+      authorizer: { jwt: { claims: { sub: vetId, 'cognito:groups': 'vets' }, scopes: [] }, principalId: '', integrationLatency: 0 },
     },
   } as unknown as APIGatewayProxyEventV2WithJWTAuthorizer);
 

@@ -3,7 +3,7 @@ import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import { docClient } from '../../lib/dynamodb';
 import { getPresignedPutUrl } from '../../lib/s3';
 import { success, error } from '../../lib/response';
-import { getUserId } from '../../lib/auth';
+import { getUserId, isVet } from '../../lib/auth';
 
 const ALLOWED_TYPES: Record<string, string> = {
   'image/jpeg': 'jpeg',
@@ -13,6 +13,7 @@ const ALLOWED_TYPES: Record<string, string> = {
 export const handler = async (
   event: APIGatewayProxyEventV2WithJWTAuthorizer,
 ): Promise<APIGatewayProxyResultV2> => {
+  if (!isVet(event)) return error('FORBIDDEN', 'Vet access required', 403);
   const vetId = getUserId(event);
   const table = process.env['TABLE_NAME']!;
   const bucket = process.env['BUCKET_NAME']!;
