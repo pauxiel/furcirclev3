@@ -26,11 +26,13 @@ export const handler = async (
       ExpressionAttributeValues: { ':pk': `VET#${vetId}`, ':sk': 'BOOKING#upcoming#' },
       Select: 'COUNT',
     })),
+    // Ask-a-Vet is a shared group chat: open questions live in the broadcast
+    // queue (not under VET#${vetId}), so count the shared QUEUE partition.
     docClient.send(new QueryCommand({
       TableName: table,
       IndexName: 'GSI2',
       KeyConditionExpression: 'GSI2PK = :pk AND begins_with(GSI2SK, :sk)',
-      ExpressionAttributeValues: { ':pk': `VET#${vetId}`, ':sk': 'THREAD#open#' },
+      ExpressionAttributeValues: { ':pk': 'QUEUE#ask_a_vet', ':sk': 'THREAD#open#' },
       Select: 'COUNT',
     })),
   ]);
