@@ -108,6 +108,25 @@ Stored in SSM: `/furcircle/${stage}/anthropic/apiKey`. Read at Lambda cold start
 
 `POST /dogs/{dogId}/photo` → presigned S3 PUT URL (300s expiry, key: `dogs/${dogId}/profile.{ext}`) → mobile PUTs image directly to S3 → mobile calls `PUT /dogs/{dogId}` with `{ photoUrl }` to save URL.
 
+## Bug-fix loop (frontend bug intake)
+
+The frontend developer reports backend bugs through the GitHub issue form
+("Bug report" template). The template auto-applies the `bug` label, which
+triggers `.github/workflows/claude-bug-fix.yml`: a Claude agent reproduces the
+bug as a failing test, fixes it, verifies (`npx tsc --noEmit` + `npm test`
+green), opens a PR on branch `bugfix/issue-<n>`, and comments a summary on the
+issue.
+
+Guardrails (also encoded in the workflow prompt):
+- No fix without a failing test that reproduces the report first.
+- Never weaken or delete existing tests to get green.
+- Cannot reproduce, or 3 failed fix attempts → comment findings, label
+  `needs-human`, touch nothing else.
+
+Requirements for the loop to run: `ANTHROPIC_API_KEY` repo secret, and the
+`needs-human` label existing in the repo. Paul reviews and merges every PR;
+the agent never merges.
+
 ## Key specs
 
 - `docs/spec-phase1-auth-onboarding.md` — Lambda functions, API contracts, IAM per Lambda, error codes

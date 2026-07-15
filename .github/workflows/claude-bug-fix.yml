@@ -1,0 +1,76 @@
+name: Claude Bug Fix
+
+# Bug-intake loop: an issue labeled `bug` (the bug_report template applies it
+# automatically) triggers a Claude agent that reproduces the bug as a failing
+# test, fixes it, and opens a PR. If it cannot reproduce or fix, it labels the
+# issue `needs-human` and explains why.
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  fix:
+    if: github.event.label.name == 'bug'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: claude-bug-fix-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are the bug-fix loop for this repo. Work on issue #${{ github.event.issue.number }}.
+
+            Read the issue body first. It follows a template: endpoint, what the
+            reporter did, expected, actual, stage.
+
+            Follow this sequence strictly:
+
+            1. REPRODUCE. Write a failing test that captures the reported
+               behavior (unit test in tests/lib or integration test in
+               tests/integration, matching existing test conventions). Run it
+               and confirm it fails for the reported reason. If you cannot
+               reproduce the bug, STOP: comment on the issue explaining what
+               you tried and why it did not reproduce, add the `needs-human`
+               label, and do not change any source code.
+            2. FIX. Find the root cause and make the smallest fix that makes
+               the failing test pass. Respect CLAUDE.md rules (ownership
+               checks, response helpers, DynamoDB key patterns).
+            3. VERIFY. Run `npx tsc --noEmit` and `npm test`. Both must be
+               fully green. Never weaken, skip, or delete an existing test to
+               get there.
+            4. SHIP. Create a branch `bugfix/issue-${{ github.event.issue.number }}`,
+               commit the test + fix, open a PR against the repo's default
+               branch titled `fix: <short description> (#${{ github.event.issue.number }})`.
+               The PR body must state: root cause, the fix, and which tests
+               prove it. Link the issue so it closes on merge.
+            5. REPORT. Comment on the issue with a short summary: root cause,
+               PR link, what the reporter should re-test.
+
+            If after 3 distinct fix attempts the test suite is still not green,
+            stop: revert to a clean state, comment on the issue with what you
+            found and where you got stuck, and add the `needs-human` label.
+          claude_args: |
+            --allowedTools "Bash(npm:*),Bash(npx:*),Bash(git:*),Bash(gh:*),Read,Write,Edit,Glob,Grep"

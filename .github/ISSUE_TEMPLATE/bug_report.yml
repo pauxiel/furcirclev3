@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a backend bug. A Claude agent picks this up automatically, tries to reproduce and fix it, and opens a PR.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The more exact you are, the better the automatic fix. Paste real payloads and real error responses, not summaries.
+  - type: input
+    id: endpoint
+    attributes:
+      label: Endpoint
+      description: Method and path you called.
+      placeholder: "POST /dogs/{dogId}/photo"
+    validations:
+      required: true
+  - type: textarea
+    id: what-i-did
+    attributes:
+      label: What I did
+      description: The exact steps or client call. Include the request payload (redact secrets and real user data).
+      placeholder: |
+        Called POST /dogs/abc123/photo with:
+        { "contentType": "image/heic" }
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What I expected
+      placeholder: "A presigned URL back, status 200."
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Paste the full error response body and status code.
+      placeholder: |
+        500 with:
+        { "error": { "code": "INTERNAL", "message": "Unexpected error" } }
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Stage
+      options:
+        - dev
+        - prod
+      default: 0
+    validations:
+      required: true
+  - type: input
+    id: request-id
+    attributes:
+      label: Request ID or timestamp (optional)
+      description: The x-amzn-RequestId header or roughly when it happened, so logs can be found.
