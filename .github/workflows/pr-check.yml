@@ -33,7 +33,9 @@ jobs:
   # and also covers PRs opened by the bug-fix loop, so agent-written fixes
   # get a second agent's review before Paul's.
   review:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     concurrency:
       group: pr-review-${{ github.head_ref }}
       cancel-in-progress: true
@@ -69,8 +71,10 @@ jobs:
                function needs.
             4. Tests: changed behavior without a covering test.
 
-            Then post ONE comment on the PR with
-            `gh pr comment ${{ github.event.pull_request.number }} --body "..."`:
+            Then post the review as a single sticky comment on the PR with
+            `gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none --body "..."`
+            (this updates the previous review comment on re-runs instead of
+            adding a new one):
             - Findings ordered by severity, each with file:line, what is
               wrong, and a concrete fix. Skip style nits and anything a
               linter or tsc already catches.
