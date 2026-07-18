@@ -35,6 +35,13 @@ describe('vetGetDashboard', () => {
     expect(body.pendingAssessments).toBe(2);
     expect(body.upcomingBookings).toBe(1);
     expect(body.openThreads).toBe(3);
+
+    // openThreads must count the shared Ask-a-Vet queue, not VET#${vetId}
+    // (group threads are never claimed into a vet's own partition).
+    const threadsQuery = mockDocClientSend.mock.calls[2][0];
+    const input = (threadsQuery.input ?? threadsQuery) as Record<string, any>;
+    expect(input.ExpressionAttributeValues[':pk']).toBe('QUEUE#ask_a_vet');
+    expect(input.ExpressionAttributeValues[':sk']).toBe('THREAD#open#');
   });
 
   it('returns zeros when no data', async () => {
