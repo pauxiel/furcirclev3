@@ -125,7 +125,10 @@ Guardrails (also encoded in the workflow prompt):
 
 Requirements for the loop to run: `ANTHROPIC_API_KEY` repo secret, and the
 `needs-human` label existing in the repo. Paul reviews and merges every PR;
-the agent never merges.
+the agent never merges. Every PR to `main` — including the loop's own PRs —
+also gets an AI review comment from the `review` job in
+`.github/workflows/pr-check.yml` (comment-only, same-repo branches only),
+so agent-written fixes get a second agent's review before Paul's.
 
 ## Key specs
 

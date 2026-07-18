@@ -27,3 +27,61 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  # AI review stage (idea borrowed from no-mistakes' pipeline): reviews the
+  # diff and posts findings as a PR comment. Runs in parallel with `check`
+  # and also covers PRs opened by the bug-fix loop, so agent-written fixes
+  # get a second agent's review before Paul's.
+  review:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: pr-review-${{ github.head_ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review PR #${{ github.event.pull_request.number }} in this repo.
+
+            Get the diff with `gh pr diff ${{ github.event.pull_request.number }}`.
+            Review ONLY the changed code, judged against the repo rules in
+            CLAUDE.md. Focus, in priority order:
+
+            1. Correctness bugs: logic errors, unhandled error paths, broken
+               DynamoDB key patterns (see CLAUDE.md table), responses not
+               going through src/lib/response.js helpers.
+            2. Ownership enforcement: every dog/owner endpoint must verify
+               `dog.ownerId === userId` from JWT claims before acting.
+               Missing checks are a finding, always.
+            3. Security: secrets in code, unvalidated user input reaching
+               DynamoDB keys or S3 keys, IAM statements broader than the
+               function needs.
+            4. Tests: changed behavior without a covering test.
+
+            Then post the review as a single sticky comment on the PR with
+            `gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none --body "..."`
+            (this updates the previous review comment on re-runs instead of
+            adding a new one):
+            - Findings ordered by severity, each with file:line, what is
+              wrong, and a concrete fix. Skip style nits and anything a
+              linter or tsc already catches.
+            - If nothing significant: a one-line comment saying the review
+              found no blocking issues.
+
+            Never push commits, never approve or request changes formally,
+            never edit files - comment only.
+          claude_args: |
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git log:*),Bash(git diff:*),Read,Glob,Grep"
