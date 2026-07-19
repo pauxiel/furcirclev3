@@ -45,6 +45,10 @@ jobs:
         run: npm ci
 
       - uses: anthropics/claude-code-action@v1
+        # Step timeout sits below the job's 45 so the agent running long fails
+        # this step rather than timing out the job. A job timeout skips every
+        # remaining step, which would swallow the failure handler below.
+        timeout-minutes: 40
         # GH_TOKEN authenticates the `gh` CLI inside the agent's shell. Without
         # it `gh pr create` and `gh issue comment` fail silently: the loop can
         # still push (checkout persists git credentials) but opens no PR and
@@ -92,3 +96,17 @@ jobs:
             found and where you got stuck, and add the `needs-human` label.
           claude_args: |
             --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+
+      # The agent's own comment+needs-human fallback lives in its prompt, so it
+      # cannot fire when the agent process itself dies (API error, timeout,
+      # npm ci failure, tool denial). This leaves a trace on the issue for every
+      # non-zero exit instead of failing silently.
+      - name: Report failure on the issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue comment "$ISSUE" --body "The automated bug-fix run failed unexpectedly before it could finish, so this issue has not been investigated by the agent. A maintainer will follow up. Run log: $RUN_URL"
+          gh issue edit "$ISSUE" --add-label needs-human || true
