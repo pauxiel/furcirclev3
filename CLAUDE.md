@@ -127,6 +127,10 @@ Guardrails (also encoded in the workflow prompt):
 - Never weaken or delete existing tests to get green.
 - Cannot reproduce, or 3 failed fix attempts → comment findings, label
   `needs-human`, touch nothing else.
+- That escalation lives in the agent's prompt, so it cannot fire when the agent
+  process itself dies (timeout, API error, failed `npm ci`). A workflow step
+  guarded by `if: failure()` applies `needs-human` and comments a run-log link
+  for every non-zero exit, so no run fails without a trace on the issue.
 
 Requirements for the loop to run: `ANTHROPIC_API_KEY` and `G_TOKEN` repo
 secrets, and the `needs-human` label existing in the repo. Paul reviews and
