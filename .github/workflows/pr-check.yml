@@ -53,7 +53,16 @@ jobs:
       # Note: claude-code-action skips PRs that modify this workflow file
       # (its own anti-tampering check), so the review does not run on CI-only
       # PRs like this one. It runs on normal PRs (a real bug fix, etc).
+      #
+      # The review is advisory - `check` is the merge gate. The action exits
+      # non-zero for reasons that say nothing about the PR's code: the
+      # anti-tampering skip above, an agent-side API error (PR #41 failed this
+      # way, `is_error:true` on the first turn, before any tool ran), a
+      # timeout. Left un-guarded that reds a PR whose code is fine, so the
+      # step is continue-on-error and the outcome is reported below instead.
       - uses: anthropics/claude-code-action@v1
+        id: review
+        continue-on-error: true
         # GH_TOKEN authenticates the `gh` CLI inside the agent's shell. Without
         # it `gh pr comment` fails silently and the review posts nothing (the
         # #38 failure). claude-code-action does not enable Bash by default, so
@@ -100,3 +109,12 @@ jobs:
             files - comment only.
           claude_args: |
             --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git log:*),Bash(git diff:*),Read,Glob,Grep"
+
+      # continue-on-error hides the red X, so record the miss somewhere a human
+      # looking at the run can see it. No comment is posted from here: a failed
+      # review has nothing to say about the diff.
+      - name: Report review outcome
+        if: steps.review.outcome == 'failure'
+        run: |
+          echo "The AI review stage did not complete, so this PR has no review comment." >> "$GITHUB_STEP_SUMMARY"
+          echo "The \`check\` job still gates the merge. See the claude-code-action step log for why." >> "$GITHUB_STEP_SUMMARY"
