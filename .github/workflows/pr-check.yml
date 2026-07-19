@@ -51,7 +51,7 @@ jobs:
           fetch-depth: 0
 
       - name: Record review start time
-        run: echo "REVIEW_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+        run: echo "REVIEW_STARTED_AT=$(date -u +%s)" >> "$GITHUB_ENV"
 
       - uses: anthropics/claude-code-action@v1
         # GH_TOKEN authenticates the `gh` CLI inside the agent's shell. Without
@@ -102,18 +102,26 @@ jobs:
             --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git log:*),Bash(git diff:*),Read,Glob,Grep"
 
       # Without this the #38 failure mode - job green, no comment - is silent.
-      # Comparing against REVIEW_STARTED_AT means a stale comment left by an
-      # earlier run does not count as this run having posted one.
+      # The freshness baseline means a stale comment left by an earlier run
+      # does not count as this run having posted one; the skew buffer keeps a
+      # runner clock running slightly ahead of the API from reding a good run.
       - name: Verify review comment posted
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          CLOCK_SKEW_BUFFER_SECONDS: '120'
         run: |
           set -euo pipefail
+          if [ -z "${REVIEW_STARTED_AT:-}" ]; then
+            echo "REVIEW_STARTED_AT is unset - the 'Record review start time' step must run before this one." >&2
+            exit 1
+          fi
+          BASELINE_EPOCH=$((REVIEW_STARTED_AT - CLOCK_SKEW_BUFFER_SECONDS))
+          export BASELINE_EPOCH
           count=$(gh api --paginate \
             "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
             --jq '.[] | select(.user.login | startswith("github-actions"))
-                      | select(.updated_at >= env.REVIEW_STARTED_AT)
+                      | select((.updated_at | fromdateiso8601) >= (env.BASELINE_EPOCH | tonumber))
                       | .id' | wc -l | tr -d ' ')
           if [ "$count" -eq 0 ]; then
             echo "AI review comment was not posted on PR #$PR_NUMBER" >&2
