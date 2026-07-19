@@ -1,11 +1,12 @@
 name: Bug report
-description: Report a backend bug. A Claude agent picks this up automatically, tries to reproduce and fix it, and opens a PR.
-labels: ["bug"]
+description: Report a backend bug. A maintainer reviews it and applies the `bug` label, which starts a Claude agent that tries to reproduce and fix it, then opens a PR.
 body:
   - type: markdown
     attributes:
       value: |
         The more exact you are, the better the automatic fix. Paste real payloads and real error responses, not summaries.
+
+        Nothing runs the moment you file this. A maintainer reads the issue first and applies the `bug` label, and only then does the agent start. Expect a short delay before anything happens here — that is the normal flow, not a broken loop.
   - type: input
     id: endpoint
     attributes:

@@ -1,9 +1,16 @@
 name: Claude Bug Fix
 
-# Bug-intake loop: an issue labeled `bug` (the bug_report template applies it
-# automatically) triggers a Claude agent that reproduces the bug as a failing
-# test, fixes it, and opens a PR. If it cannot reproduce or fix, it labels the
-# issue `needs-human` and explains why.
+# Bug-intake loop: a maintainer applies the `bug` label to an issue, which
+# triggers a Claude agent that reproduces the bug as a failing test, fixes it,
+# and opens a PR. If it cannot reproduce or fix, it labels the issue
+# `needs-human` and explains why.
+#
+# SECURITY: the label is applied by a human, NOT auto-applied by the issue form.
+# This is deliberate — the repo is public, and the agent runs with broad Bash on
+# the issue's text. Requiring a maintainer to apply `bug` means untrusted text
+# from a stranger's issue never reaches the agent until a human has vetted it,
+# which is what makes the broad `--allowedTools "Bash..."` below acceptable.
+# claude-code-action also refuses to run for non-write actors as a second layer.
 
 on:
   issues:
@@ -13,7 +20,7 @@ jobs:
   fix:
     if: github.event.label.name == 'bug'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     concurrency:
       group: claude-bug-fix-${{ github.event.issue.number }}
       cancel-in-progress: false
@@ -38,17 +45,26 @@ jobs:
         run: npm ci
 
       - uses: anthropics/claude-code-action@v1
+        # Step timeout sits well below the job's 55 so the agent running long
+        # fails this step rather than timing out the job. A job timeout skips
+        # every remaining step, which would swallow the failure handler below.
+        # The 15-minute gap covers checkout, npm ci, and the handler itself.
+        timeout-minutes: 40
         # GH_TOKEN authenticates the `gh` CLI inside the agent's shell. Without
         # it `gh pr create` and `gh issue comment` fail silently: the loop can
         # still push (checkout persists git credentials) but opens no PR and
         # reports nothing back on the issue.
         #
-        # G_TOKEN is a fine-grained PAT scoped to this repo, used instead of the
-        # built-in GITHUB_TOKEN so that PRs this loop opens trigger pr-check.yml.
-        # GitHub suppresses workflow triggers for events created with the
-        # built-in token; a PAT does not have that restriction.
+        # Uses the built-in GITHUB_TOKEN, NOT a PAT. The agent runs with broad
+        # Bash on untrusted issue text, and claude-code-action's own security
+        # guidance warns a static PAT can be recovered over time via prompt
+        # injection; the built-in token is ephemeral (expires per run) so there
+        # is nothing durable to steal. Tradeoff: PRs this loop opens with the
+        # built-in token do NOT trigger pr-check.yml (GitHub suppresses workflow
+        # triggers for GITHUB_TOKEN events), so a maintainer nudges a loop PR
+        # (empty commit or reopen) to run the check + review jobs.
         env:
-          GH_TOKEN: ${{ secrets.G_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
@@ -84,4 +100,23 @@ jobs:
             stop: revert to a clean state, comment on the issue with what you
             found and where you got stuck, and add the `needs-human` label.
           claude_args: |
-            --allowedTools "Bash(npm:*),Bash(npx:*),Bash(git:*),Bash(gh:*),Read,Write,Edit,Glob,Grep"
+            --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+
+      # The agent's own comment+needs-human fallback lives in its prompt, so it
+      # cannot fire when the agent process itself dies (API error, timeout,
+      # npm ci failure, tool denial). This leaves a trace on the issue for every
+      # non-zero exit instead of failing silently.
+      - name: Report failure on the issue
+        if: failure()
+        # GH_REPO keeps this working even when actions/checkout is what failed;
+        # without it `gh` resolves the repo from the git remote. The label goes
+        # first and both calls tolerate failure, so a flaky comment API cannot
+        # cost the machine-readable escalation signal.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue edit "$ISSUE" --add-label needs-human || true
+          gh issue comment "$ISSUE" --body "The automated bug-fix run exited unexpectedly and may not have completed. A maintainer will follow up. Before re-filing, check the run log and whether a \`bugfix/issue-$ISSUE\` branch or PR already exists. Run log: $RUN_URL" || true

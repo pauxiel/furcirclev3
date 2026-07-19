@@ -111,35 +111,48 @@ Stored in SSM: `/furcircle/${stage}/anthropic/apiKey`. Read at Lambda cold start
 ## Bug-fix loop (frontend bug intake)
 
 The frontend developer reports backend bugs through the GitHub issue form
-("Bug report" template). The template auto-applies the `bug` label, which
-triggers `.github/workflows/claude-bug-fix.yml`: a Claude agent reproduces the
-bug as a failing test, fixes it, verifies (`npx tsc --noEmit` + `npm test`
-green), opens a PR on branch `bugfix/issue-<n>`, and comments a summary on the
-issue.
+("Bug report" template). The form does **not** auto-apply the `bug` label: a
+maintainer reviews the issue and applies `bug` by hand, which triggers
+`.github/workflows/claude-bug-fix.yml`: a Claude agent reproduces the bug as a
+failing test, fixes it, verifies (`npx tsc --noEmit` + `npm test` green), opens
+a PR on branch `bugfix/issue-<n>`, and comments a summary on the issue.
+
+The manual-label step is a security control, not friction: the repo is public
+and the agent runs with broad Bash on the issue text, so requiring a human to
+apply `bug` keeps a stranger's untrusted issue from auto-triggering the agent.
+(claude-code-action also refuses non-write actors as a second layer.)
 
 Guardrails (also encoded in the workflow prompt):
 - No fix without a failing test that reproduces the report first.
 - Never weaken or delete existing tests to get green.
 - Cannot reproduce, or 3 failed fix attempts → comment findings, label
   `needs-human`, touch nothing else.
+- That escalation lives in the agent's prompt, so it cannot fire when the agent
+  process itself dies (timeout, API error, failed `npm ci`). A workflow step
+  guarded by `if: failure()` applies `needs-human` and comments a run-log link
+  for every non-zero exit, so no run fails without a trace on the issue.
 
-Requirements for the loop to run: `ANTHROPIC_API_KEY` and `G_TOKEN` repo
-secrets, and the `needs-human` label existing in the repo. Paul reviews and
-merges every PR; the agent never merges.
+Requirements for the loop to run: the `ANTHROPIC_API_KEY` repo secret and the
+`needs-human` label existing in the repo. Paul reviews and merges every PR; the
+agent never merges.
 
 PRs opened normally — by a person, or any actor other than the built-in
 `GITHUB_TOKEN` — run `.github/workflows/pr-check.yml`: the `check` job
 (`npx tsc --noEmit` + `npm test`) and the `review` job, which posts an AI
 review comment (comment-only, same-repo branches only).
-The `review` job fails if no comment was posted during the run, so a silently
-comment-less review shows up red instead of green.
+The `review` job is advisory and never blocks: `check` is the merge gate.
+The action exits non-zero for reasons unrelated to the diff — its
+anti-tampering skip on PRs that edit `pr-check.yml`, an agent-side API error, a
+timeout — so its step is `continue-on-error`.
+When it does not complete, the run's job summary says so and the PR carries no
+review comment.
 
-The loop's own PRs run pr-check.yml too.
-It opens them with `gh pr create` authenticated by `G_TOKEN`, a fine-grained
-PAT scoped to this repo.
-Events created with a PAT trigger workflows, unlike the built-in
-`GITHUB_TOKEN`, which suppresses them — so both the `check` job and the AI
-review comment fire on loop PRs.
+The loop opens its PRs with `gh pr create` authenticated by the built-in
+`GITHUB_TOKEN` (not a PAT — the broad-Bash agent processes untrusted issue text,
+and a static PAT can be recovered via prompt injection). GitHub suppresses
+workflow triggers for `GITHUB_TOKEN` events, so pr-check.yml does NOT auto-run
+on a loop PR; a maintainer nudges it (an empty commit, or close/reopen) to run
+the `check` and AI `review` jobs.
 
 ## Key specs
 
