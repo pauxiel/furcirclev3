@@ -55,12 +55,16 @@ jobs:
         # still push (checkout persists git credentials) but opens no PR and
         # reports nothing back on the issue.
         #
-        # G_TOKEN is a fine-grained PAT scoped to this repo, used instead of the
-        # built-in GITHUB_TOKEN so that PRs this loop opens trigger pr-check.yml.
-        # GitHub suppresses workflow triggers for events created with the
-        # built-in token; a PAT does not have that restriction.
+        # Uses the built-in GITHUB_TOKEN, NOT a PAT. The agent runs with broad
+        # Bash on untrusted issue text, and claude-code-action's own security
+        # guidance warns a static PAT can be recovered over time via prompt
+        # injection; the built-in token is ephemeral (expires per run) so there
+        # is nothing durable to steal. Tradeoff: PRs this loop opens with the
+        # built-in token do NOT trigger pr-check.yml (GitHub suppresses workflow
+        # triggers for GITHUB_TOKEN events), so a maintainer nudges a loop PR
+        # (empty commit or reopen) to run the check + review jobs.
         env:
-          GH_TOKEN: ${{ secrets.G_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
