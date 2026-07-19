@@ -20,7 +20,7 @@ jobs:
   fix:
     if: github.event.label.name == 'bug'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     concurrency:
       group: claude-bug-fix-${{ github.event.issue.number }}
       cancel-in-progress: false
@@ -45,9 +45,10 @@ jobs:
         run: npm ci
 
       - uses: anthropics/claude-code-action@v1
-        # Step timeout sits below the job's 45 so the agent running long fails
-        # this step rather than timing out the job. A job timeout skips every
-        # remaining step, which would swallow the failure handler below.
+        # Step timeout sits well below the job's 55 so the agent running long
+        # fails this step rather than timing out the job. A job timeout skips
+        # every remaining step, which would swallow the failure handler below.
+        # The 15-minute gap covers checkout, npm ci, and the handler itself.
         timeout-minutes: 40
         # GH_TOKEN authenticates the `gh` CLI inside the agent's shell. Without
         # it `gh pr create` and `gh issue comment` fail silently: the loop can
@@ -103,10 +104,15 @@ jobs:
       # non-zero exit instead of failing silently.
       - name: Report failure on the issue
         if: failure()
+        # GH_REPO keeps this working even when actions/checkout is what failed;
+        # without it `gh` resolves the repo from the git remote. The label goes
+        # first and both calls tolerate failure, so a flaky comment API cannot
+        # cost the machine-readable escalation signal.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           ISSUE: ${{ github.event.issue.number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          gh issue comment "$ISSUE" --body "The automated bug-fix run failed unexpectedly before it could finish, so this issue has not been investigated by the agent. A maintainer will follow up. Run log: $RUN_URL"
           gh issue edit "$ISSUE" --add-label needs-human || true
+          gh issue comment "$ISSUE" --body "The automated bug-fix run exited unexpectedly and may not have completed. A maintainer will follow up. Before re-filing, check the run log and whether a \`bugfix/issue-$ISSUE\` branch or PR already exists. Run log: $RUN_URL" || true
