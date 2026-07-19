@@ -131,6 +131,8 @@ PRs opened normally — by a person, or any actor other than the built-in
 `GITHUB_TOKEN` — run `.github/workflows/pr-check.yml`: the `check` job
 (`npx tsc --noEmit` + `npm test`) and the `review` job, which posts an AI
 review comment (comment-only, same-repo branches only).
+The `review` job fails if no comment was posted during the run, so a silently
+comment-less review shows up red instead of green.
 
 The loop's own PRs run pr-check.yml too.
 It opens them with `gh pr create` authenticated by `G_TOKEN`, a fine-grained
