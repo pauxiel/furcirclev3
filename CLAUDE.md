@@ -111,11 +111,16 @@ Stored in SSM: `/furcircle/${stage}/anthropic/apiKey`. Read at Lambda cold start
 ## Bug-fix loop (frontend bug intake)
 
 The frontend developer reports backend bugs through the GitHub issue form
-("Bug report" template). The template auto-applies the `bug` label, which
-triggers `.github/workflows/claude-bug-fix.yml`: a Claude agent reproduces the
-bug as a failing test, fixes it, verifies (`npx tsc --noEmit` + `npm test`
-green), opens a PR on branch `bugfix/issue-<n>`, and comments a summary on the
-issue.
+("Bug report" template). The form does **not** auto-apply the `bug` label: a
+maintainer reviews the issue and applies `bug` by hand, which triggers
+`.github/workflows/claude-bug-fix.yml`: a Claude agent reproduces the bug as a
+failing test, fixes it, verifies (`npx tsc --noEmit` + `npm test` green), opens
+a PR on branch `bugfix/issue-<n>`, and comments a summary on the issue.
+
+The manual-label step is a security control, not friction: the repo is public
+and the agent runs with broad Bash on the issue text, so requiring a human to
+apply `bug` keeps a stranger's untrusted issue from auto-triggering the agent.
+(claude-code-action also refuses non-write actors as a second layer.)
 
 Guardrails (also encoded in the workflow prompt):
 - No fix without a failing test that reproduces the report first.

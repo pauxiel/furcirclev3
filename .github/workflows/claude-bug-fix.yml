@@ -1,9 +1,16 @@
 name: Claude Bug Fix
 
-# Bug-intake loop: an issue labeled `bug` (the bug_report template applies it
-# automatically) triggers a Claude agent that reproduces the bug as a failing
-# test, fixes it, and opens a PR. If it cannot reproduce or fix, it labels the
-# issue `needs-human` and explains why.
+# Bug-intake loop: a maintainer applies the `bug` label to an issue, which
+# triggers a Claude agent that reproduces the bug as a failing test, fixes it,
+# and opens a PR. If it cannot reproduce or fix, it labels the issue
+# `needs-human` and explains why.
+#
+# SECURITY: the label is applied by a human, NOT auto-applied by the issue form.
+# This is deliberate — the repo is public, and the agent runs with broad Bash on
+# the issue's text. Requiring a maintainer to apply `bug` means untrusted text
+# from a stranger's issue never reaches the agent until a human has vetted it,
+# which is what makes the broad `--allowedTools "Bash..."` below acceptable.
+# claude-code-action also refuses to run for non-write actors as a second layer.
 
 on:
   issues:
@@ -84,4 +91,4 @@ jobs:
             stop: revert to a clean state, comment on the issue with what you
             found and where you got stuck, and add the `needs-human` label.
           claude_args: |
-            --allowedTools "Bash(npm:*),Bash(npx:*),Bash(git:*),Bash(gh:*),Read,Write,Edit,Glob,Grep"
+            --allowedTools "Bash,Read,Write,Edit,Glob,Grep"

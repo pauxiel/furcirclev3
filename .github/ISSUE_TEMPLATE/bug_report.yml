@@ -1,6 +1,5 @@
 name: Bug report
-description: Report a backend bug. A Claude agent picks this up automatically, tries to reproduce and fix it, and opens a PR.
-labels: ["bug"]
+description: Report a backend bug. A maintainer reviews it and applies the `bug` label, which starts a Claude agent that tries to reproduce and fix it, then opens a PR.
 body:
   - type: markdown
     attributes:
