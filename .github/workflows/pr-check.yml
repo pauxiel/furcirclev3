@@ -50,7 +50,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Note: claude-code-action skips PRs that modify this workflow file
+      # (its own anti-tampering check), so the review does not run on CI-only
+      # PRs like this one. It runs on normal PRs (a real bug fix, etc).
       - uses: anthropics/claude-code-action@v1
+        # GH_TOKEN authenticates the `gh` CLI inside the agent's shell. Without
+        # it `gh pr comment` fails silently and the review posts nothing (the
+        # #38 failure). claude-code-action does not enable Bash by default, so
+        # the gh commands are opt-in through the --allowedTools list below.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
@@ -71,17 +80,23 @@ jobs:
                function needs.
             4. Tests: changed behavior without a covering test.
 
-            Then post the review as a single sticky comment on the PR with
-            `gh pr comment ${{ github.event.pull_request.number }} --edit-last --create-if-none --body "..."`
-            (this updates the previous review comment on re-runs instead of
-            adding a new one):
+            Your REQUIRED final step, no matter what you find, is to post the
+            review as a single sticky comment by running the `gh` CLI:
+
+              gh pr comment ${{ github.event.pull_request.number }} \
+                --edit-last --create-if-none --body "<your review>"
+
+            `gh` is already authenticated via GH_TOKEN. `--edit-last
+            --create-if-none` updates the previous review comment on re-runs
+            instead of stacking a new one. The comment body must be:
             - Findings ordered by severity, each with file:line, what is
               wrong, and a concrete fix. Skip style nits and anything a
               linter or tsc already catches.
-            - If nothing significant: a one-line comment saying the review
-              found no blocking issues.
+            - If nothing significant is found, still post: a one-line comment
+              saying the review found no blocking issues.
 
-            Never push commits, never approve or request changes formally,
-            never edit files - comment only.
+            Do not end the session without running that command. Never push
+            commits, never approve or request changes formally, never edit
+            files - comment only.
           claude_args: |
             --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git log:*),Bash(git diff:*),Read,Glob,Grep"

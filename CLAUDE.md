@@ -123,12 +123,23 @@ Guardrails (also encoded in the workflow prompt):
 - Cannot reproduce, or 3 failed fix attempts → comment findings, label
   `needs-human`, touch nothing else.
 
-Requirements for the loop to run: `ANTHROPIC_API_KEY` repo secret, and the
-`needs-human` label existing in the repo. Paul reviews and merges every PR;
-the agent never merges. Every PR to `main` — including the loop's own PRs —
-also gets an AI review comment from the `review` job in
-`.github/workflows/pr-check.yml` (comment-only, same-repo branches only),
-so agent-written fixes get a second agent's review before Paul's.
+Requirements for the loop to run: `ANTHROPIC_API_KEY` and `G_TOKEN` repo
+secrets, and the `needs-human` label existing in the repo. Paul reviews and
+merges every PR; the agent never merges.
+
+PRs opened normally — by a person, or any actor other than the built-in
+`GITHUB_TOKEN` — run `.github/workflows/pr-check.yml`: the `check` job
+(`npx tsc --noEmit` + `npm test`) and the `review` job, which posts an AI
+review comment (comment-only, same-repo branches only).
+The `review` job fails if no comment was posted during the run, so a silently
+comment-less review shows up red instead of green.
+
+The loop's own PRs run pr-check.yml too.
+It opens them with `gh pr create` authenticated by `G_TOKEN`, a fine-grained
+PAT scoped to this repo.
+Events created with a PAT trigger workflows, unlike the built-in
+`GITHUB_TOKEN`, which suppresses them — so both the `check` job and the AI
+review comment fire on loop PRs.
 
 ## Key specs
 
