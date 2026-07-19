@@ -38,6 +38,12 @@ jobs:
         run: npm ci
 
       - uses: anthropics/claude-code-action@v1
+        # GH_TOKEN authenticates the `gh` CLI inside the agent's shell. Without
+        # it `gh pr create` and `gh issue comment` fail silently: the loop can
+        # still push (checkout persists git credentials) but opens no PR and
+        # reports nothing back on the issue.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |

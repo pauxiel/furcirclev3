@@ -50,6 +50,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Record review start time
+        run: echo "REVIEW_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - uses: anthropics/claude-code-action@v1
         # GH_TOKEN authenticates the `gh` CLI inside the agent's shell. Without
         # it `gh pr comment` fails silently and the review posts nothing (the
@@ -97,3 +100,23 @@ jobs:
             files - comment only.
           claude_args: |
             --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git log:*),Bash(git diff:*),Read,Glob,Grep"
+
+      # Without this the #38 failure mode - job green, no comment - is silent.
+      # Comparing against REVIEW_STARTED_AT means a stale comment left by an
+      # earlier run does not count as this run having posted one.
+      - name: Verify review comment posted
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          count=$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --jq '.[] | select(.user.login | startswith("github-actions"))
+                      | select(.updated_at >= env.REVIEW_STARTED_AT)
+                      | .id' | wc -l | tr -d ' ')
+          if [ "$count" -eq 0 ]; then
+            echo "AI review comment was not posted on PR #$PR_NUMBER" >&2
+            exit 1
+          fi
+          echo "Found $count review comment(s) posted by this run."
