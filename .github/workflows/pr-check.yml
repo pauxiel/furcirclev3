@@ -104,7 +104,7 @@ jobs:
       # Without this the #38 failure mode - job green, no comment - is silent.
       # The freshness baseline means a stale comment left by an earlier run
       # does not count as this run having posted one; the skew buffer keeps a
-      # runner clock running slightly ahead of the API from reding a good run.
+      # runner clock that is slightly ahead of the API from failing a good run.
       - name: Verify review comment posted
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

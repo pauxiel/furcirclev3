@@ -42,8 +42,13 @@ jobs:
         # it `gh pr create` and `gh issue comment` fail silently: the loop can
         # still push (checkout persists git credentials) but opens no PR and
         # reports nothing back on the issue.
+        #
+        # G_TOKEN is a fine-grained PAT scoped to this repo, used instead of the
+        # built-in GITHUB_TOKEN so that PRs this loop opens trigger pr-check.yml.
+        # GitHub suppresses workflow triggers for events created with the
+        # built-in token; a PAT does not have that restriction.
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.G_TOKEN }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
