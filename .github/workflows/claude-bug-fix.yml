@@ -62,7 +62,7 @@ jobs:
         # is nothing durable to steal. Tradeoff: PRs this loop opens with the
         # built-in token do NOT trigger pr-check.yml (GitHub suppresses workflow
         # triggers for GITHUB_TOKEN events), so a maintainer nudges a loop PR
-        # (empty commit or reopen) to run the check + review jobs.
+        # (empty commit or reopen) to run the check job.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -101,7 +101,7 @@ jobs:
             found and where you got stuck, and add the `needs-human` label.
           claude_args: |
             --model claude-sonnet-5
-            --max-turns 40
+            --max-turns 60
             --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
 
       # The agent's own comment+needs-human fallback lives in its prompt, so it
