@@ -1,5 +1,12 @@
 name: PR Check
 
+# tsc + tests on every PR to main. This is the merge gate and costs no API
+# credit. AI review of PRs is handled locally by no-mistakes before a PR is
+# opened, so there is deliberately no claude-code-action review job here — it
+# would only duplicate that review at API cost. claude-code-action is used
+# solely for the issue-triggered bug-fix loop (claude-bug-fix.yml), which has
+# no local equivalent.
+
 on:
   pull_request:
     branches: [main]

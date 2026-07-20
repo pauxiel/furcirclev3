@@ -100,6 +100,8 @@ jobs:
             stop: revert to a clean state, comment on the issue with what you
             found and where you got stuck, and add the `needs-human` label.
           claude_args: |
+            --model claude-sonnet-5
+            --max-turns 40
             --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
 
       # The agent's own comment+needs-human fallback lives in its prompt, so it

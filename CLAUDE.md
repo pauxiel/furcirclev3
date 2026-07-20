@@ -136,23 +136,22 @@ Requirements for the loop to run: the `ANTHROPIC_API_KEY` repo secret and the
 `needs-human` label existing in the repo. Paul reviews and merges every PR; the
 agent never merges.
 
-PRs opened normally — by a person, or any actor other than the built-in
-`GITHUB_TOKEN` — run `.github/workflows/pr-check.yml`: the `check` job
-(`npx tsc --noEmit` + `npm test`) and the `review` job, which posts an AI
-review comment (comment-only, same-repo branches only).
-The `review` job is advisory and never blocks: `check` is the merge gate.
-The action exits non-zero for reasons unrelated to the diff — its
-anti-tampering skip on PRs that edit `pr-check.yml`, an agent-side API error, a
-timeout — so its step is `continue-on-error`.
-When it does not complete, the run's job summary says so and the PR carries no
-review comment.
+### AI review of PRs (why there is none in CI)
 
-The loop opens its PRs with `gh pr create` authenticated by the built-in
-`GITHUB_TOKEN` (not a PAT — the broad-Bash agent processes untrusted issue text,
-and a static PAT can be recovered via prompt injection). GitHub suppresses
-workflow triggers for `GITHUB_TOKEN` events, so pr-check.yml does NOT auto-run
-on a loop PR; a maintainer nudges it (an empty commit, or close/reopen) to run
-the `check` and AI `review` jobs.
+PRs to `main` run only `.github/workflows/pr-check.yml`'s `check` job
+(`npx tsc --noEmit` + `npm test`) — the merge gate, no API cost. There is
+deliberately **no** claude-code-action review job: local work is already
+reviewed by no-mistakes (on Claude Code auth, not the API key) before it
+becomes a PR, so a CI review would only duplicate that at API cost.
+claude-code-action is used solely for the issue-triggered bug-fix loop above,
+which has no local equivalent. Model is pinned to Sonnet with a `--max-turns`
+cap to bound its cost.
+
+The loop opens its PRs with the built-in `GITHUB_TOKEN` (not a PAT — the
+broad-Bash agent processes untrusted issue text, and a static PAT can be
+recovered via prompt injection). GitHub suppresses workflow triggers for
+`GITHUB_TOKEN` events, so `check` does not auto-run on a loop PR; a maintainer
+nudges it (an empty commit, or close/reopen), or reviews it directly.
 
 ## Key specs
 
