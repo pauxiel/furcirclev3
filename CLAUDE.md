@@ -118,9 +118,23 @@ failing test, fixes it, verifies (`npx tsc --noEmit` + `npm test` green), opens
 a PR on branch `bugfix/issue-<n>`, and comments a summary on the issue.
 
 The manual-label step is a security control, not friction: the repo is public
-and the agent runs with broad Bash on the issue text, so requiring a human to
-apply `bug` keeps a stranger's untrusted issue from auto-triggering the agent.
+and the agent runs Bash on the issue text, so requiring a human to apply `bug`
+keeps a stranger's untrusted issue from auto-triggering the agent.
 (claude-code-action also refuses non-write actors as a second layer.)
+That human label gate is the primary control.
+
+Marginal defense in depth: the loop's `--allowedTools` scopes Bash to the
+command families it needs (`Bash(npm:*)`, `Bash(npx:*)`, `Bash(git:*)`,
+`Bash(gh:*)`, `Bash(node:*)`) rather than bare `Bash`.
+That removes the trivial one-liner exfiltration path — `curl`/`wget`/`nc`
+piping `ANTHROPIC_API_KEY` to an attacker host — which is a net gain over bare
+`Bash`.
+It does not eliminate exfiltration: `node -e` and `npx <package>` execute
+arbitrary code, `gh api` is an egress path, and running the test suite
+inherently means executing code.
+Scoping raises the cost of an attack; it is not a guarantee.
+Widen by named family if a real run trips a permission denial; never revert to
+bare `Bash`.
 
 Guardrails (also encoded in the workflow prompt):
 - No fix without a failing test that reproduces the report first.
@@ -147,8 +161,8 @@ claude-code-action is used solely for the issue-triggered bug-fix loop above,
 which has no local equivalent. Model is pinned to Sonnet with a `--max-turns`
 cap to bound its cost.
 
-The loop opens its PRs with the built-in `GITHUB_TOKEN` (not a PAT — the
-broad-Bash agent processes untrusted issue text, and a static PAT can be
+The loop opens its PRs with the built-in `GITHUB_TOKEN` (not a PAT — the agent
+processes untrusted issue text with shell access, and a static PAT can be
 recovered via prompt injection). GitHub suppresses workflow triggers for
 `GITHUB_TOKEN` events, so `check` does not auto-run on a loop PR; a maintainer
 nudges it (an empty commit, or close/reopen), or reviews it directly.
