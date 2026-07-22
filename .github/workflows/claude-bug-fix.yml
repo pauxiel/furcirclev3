@@ -6,11 +6,17 @@ name: Claude Bug Fix
 # `needs-human` and explains why.
 #
 # SECURITY: the label is applied by a human, NOT auto-applied by the issue form.
-# This is deliberate — the repo is public, and the agent runs with broad Bash on
-# the issue's text. Requiring a maintainer to apply `bug` means untrusted text
-# from a stranger's issue never reaches the agent until a human has vetted it,
-# which is what makes the broad `--allowedTools "Bash..."` below acceptable.
-# claude-code-action also refuses to run for non-write actors as a second layer.
+# This is deliberate — the repo is public, and the agent runs Bash on the issue's
+# untrusted text. Requiring a maintainer (a collaborator with GitHub write access)
+# to apply `bug` means a stranger's issue never reaches the agent until a human has
+# vetted it. claude-code-action also refuses to run for non-write actors as a
+# second layer. Defense in depth: `--allowedTools` below scopes Bash to the command
+# families the loop needs (npm/npx/git/gh/node) rather than bare `Bash`, so a hidden
+# prompt injection that slips past the maintainer cannot reach `curl`/`wget`/`nc` to
+# exfiltrate ANTHROPIC_API_KEY. Per claude-code-action's security guidance, scoping
+# reduces — does not eliminate — the injection-recovery risk; the human label stays
+# the primary control. Widen by named family if a real run trips a permission denial;
+# never revert to bare `Bash`.
 
 on:
   issues:
@@ -102,7 +108,7 @@ jobs:
           claude_args: |
             --model claude-sonnet-5
             --max-turns 60
-            --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+            --allowedTools "Bash(npm:*),Bash(npx:*),Bash(git:*),Bash(gh:*),Bash(node:*),Read,Write,Edit,Glob,Grep"
 
       # The agent's own comment+needs-human fallback lives in its prompt, so it
       # cannot fire when the agent process itself dies (API error, timeout,
