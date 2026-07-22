@@ -10,13 +10,17 @@ name: Claude Bug Fix
 # untrusted text. Requiring a maintainer (a collaborator with GitHub write access)
 # to apply `bug` means a stranger's issue never reaches the agent until a human has
 # vetted it. claude-code-action also refuses to run for non-write actors as a
-# second layer. Defense in depth: `--allowedTools` below scopes Bash to the command
-# families the loop needs (npm/npx/git/gh/node) rather than bare `Bash`, so a hidden
-# prompt injection that slips past the maintainer cannot reach `curl`/`wget`/`nc` to
-# exfiltrate ANTHROPIC_API_KEY. Per claude-code-action's security guidance, scoping
-# reduces — does not eliminate — the injection-recovery risk; the human label stays
-# the primary control. Widen by named family if a real run trips a permission denial;
-# never revert to bare `Bash`.
+# second layer. That human label gate is the PRIMARY control.
+#
+# Marginal defense in depth: `--allowedTools` below scopes Bash to the command
+# families the loop needs (npm/npx/git/gh/node) rather than bare `Bash`. That
+# removes the trivial one-liner exfiltration path (`curl`/`wget`/`nc` piping
+# ANTHROPIC_API_KEY to an attacker host) — a net gain over bare `Bash` — but it
+# does NOT eliminate exfiltration. `node -e` and `npx <package>` execute
+# arbitrary code, `gh api` is an egress path, and running the repo's test suite
+# inherently means executing code. Treat scoping as raising the cost of an
+# attack, never as a guarantee. Widen by named family if a real run trips a
+# permission denial; never revert to bare `Bash`.
 
 on:
   issues:
@@ -61,8 +65,8 @@ jobs:
         # still push (checkout persists git credentials) but opens no PR and
         # reports nothing back on the issue.
         #
-        # Uses the built-in GITHUB_TOKEN, NOT a PAT. The agent runs with broad
-        # Bash on untrusted issue text, and claude-code-action's own security
+        # Uses the built-in GITHUB_TOKEN, NOT a PAT. The agent processes
+        # untrusted issue text with shell access, and claude-code-action's own security
         # guidance warns a static PAT can be recovered over time via prompt
         # injection; the built-in token is ephemeral (expires per run) so there
         # is nothing durable to steal. Tradeoff: PRs this loop opens with the
@@ -99,6 +103,12 @@ jobs:
                branch titled `fix: <short description> (#${{ github.event.issue.number }})`.
                The PR body must state: root cause, the fix, and which tests
                prove it. Link the issue so it closes on merge.
+               Your Bash permissions match only the literal command head, so:
+               write the PR body to a file and pass
+               `gh pr create --body-file <file>` — never
+               `--body "$(cat ...)"`; and never use compound or
+               command-substituted invocations like `cd dir && npm test`. Run
+               each allowed command directly.
             5. REPORT. Comment on the issue with a short summary: root cause,
                PR link, what the reporter should re-test.
 

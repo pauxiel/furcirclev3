@@ -121,10 +121,18 @@ The manual-label step is a security control, not friction: the repo is public
 and the agent runs Bash on the issue text, so requiring a human to apply `bug`
 keeps a stranger's untrusted issue from auto-triggering the agent.
 (claude-code-action also refuses non-write actors as a second layer.)
-Defense in depth: the loop's `--allowedTools` scopes Bash to the command
-families it needs (`Bash(npm:*)`, `Bash(npx:*)`, `Bash(git:*)`, `Bash(gh:*)`,
-`Bash(node:*)`) rather than bare `Bash`, so a hidden prompt injection cannot
-reach `curl`/`wget`/`nc` to exfiltrate `ANTHROPIC_API_KEY`.
+That human label gate is the primary control.
+
+Marginal defense in depth: the loop's `--allowedTools` scopes Bash to the
+command families it needs (`Bash(npm:*)`, `Bash(npx:*)`, `Bash(git:*)`,
+`Bash(gh:*)`, `Bash(node:*)`) rather than bare `Bash`.
+That removes the trivial one-liner exfiltration path — `curl`/`wget`/`nc`
+piping `ANTHROPIC_API_KEY` to an attacker host — which is a net gain over bare
+`Bash`.
+It does not eliminate exfiltration: `node -e` and `npx <package>` execute
+arbitrary code, `gh api` is an egress path, and running the test suite
+inherently means executing code.
+Scoping raises the cost of an attack; it is not a guarantee.
 Widen by named family if a real run trips a permission denial; never revert to
 bare `Bash`.
 
