@@ -145,4 +145,38 @@ describe('createDog handler', () => {
     const item = (profileCall![0] as { input: { Item: Record<string, unknown> } }).input.Item;
     expect(item['dateOfBirth']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
+
+  const dobFromEvent = (): string => {
+    const profileCall = mockDocClientSend.mock.calls.find(
+      (c: unknown[]) =>
+        (c[0] as { input?: { Item?: { SK?: string } } }).input?.Item?.SK === 'PROFILE',
+    );
+    const item = (profileCall![0] as { input: { Item: Record<string, unknown> } }).input.Item;
+    return item['dateOfBirth'] as string;
+  };
+
+  // Regression: issue #40. On a month-end creation date, subtracting whole
+  // months must not overflow into the following month. new Date(2026-03-31)
+  // then setMonth(-1) yields an invalid "Feb 31" that JS rolls forward to
+  // Mar 3; the birth date must instead clamp to the last valid day, Feb 28.
+  it('clamps dateOfBirth to the last valid day for month-end creation dates', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-31T00:00:00Z'));
+    try {
+      await handler(makeEvent({ ...validDog, ageMonths: 1 }));
+      expect(dobFromEvent()).toBe('2026-02-28');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('subtracts whole months across a year boundary', async () => {
+    // 2026-01-31 minus 2 months clamps Nov "31" to Nov 30 of the prior year.
+    jest.useFakeTimers().setSystemTime(new Date('2026-01-31T00:00:00Z'));
+    try {
+      await handler(makeEvent({ ...validDog, ageMonths: 2 }));
+      expect(dobFromEvent()).toBe('2025-11-30');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

@@ -4,7 +4,7 @@
   "description": "FurCircle serverless backend — AI dog wellness plans",
   "main": "handler.js",
   "scripts": {
-    "test": "jest --runInBand --testPathPattern=tests/lib",
+    "test": "jest --runInBand --testPathPattern='tests/(lib|functions)'",
     "test:integration": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand --testPathPattern=tests/integration",
     "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand --testPathPattern=tests/e2e",
     "test:all": "jest --runInBand",

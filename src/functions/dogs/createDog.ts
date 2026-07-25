@@ -44,8 +44,17 @@ export const handler = async (
   const table = process.env['TABLE_NAME']!;
   const now = new Date().toISOString();
 
+  // Subtract whole months without overflowing month-end dates. Setting the day
+  // to 1 before shifting the month avoids an invalid date (e.g. "Feb 31") that
+  // JS would silently roll into the next month; the day is then restored,
+  // clamped to the target month's last valid day. UTC methods keep this
+  // consistent with the toISOString() serialization below.
   const dob = new Date();
-  dob.setMonth(dob.getMonth() - (ageMonths as number));
+  const targetDay = dob.getUTCDate();
+  dob.setUTCDate(1);
+  dob.setUTCMonth(dob.getUTCMonth() - (ageMonths as number));
+  const lastDayOfMonth = new Date(Date.UTC(dob.getUTCFullYear(), dob.getUTCMonth() + 1, 0)).getUTCDate();
+  dob.setUTCDate(Math.min(targetDay, lastDayOfMonth));
   const dateOfBirth = dob.toISOString().slice(0, 10);
 
   const puts: Promise<unknown>[] = [
