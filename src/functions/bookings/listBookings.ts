@@ -35,10 +35,14 @@ export const handler = async (
     return success({ bookings: [] });
   }
 
-  const batchKeys = bookings.flatMap((b) => [
-    { PK: `VET#${b['vetId'] as string}`, SK: 'PROFILE' },
-    { PK: `DOG#${b['dogId'] as string}`, SK: 'PROFILE' },
-  ]);
+  const uniqueKeys = new Map<string, { PK: string; SK: string }>();
+  for (const b of bookings) {
+    const vetKey = { PK: `VET#${b['vetId'] as string}`, SK: 'PROFILE' };
+    const dogKey = { PK: `DOG#${b['dogId'] as string}`, SK: 'PROFILE' };
+    uniqueKeys.set(`${vetKey.PK}#${vetKey.SK}`, vetKey);
+    uniqueKeys.set(`${dogKey.PK}#${dogKey.SK}`, dogKey);
+  }
+  const batchKeys = Array.from(uniqueKeys.values());
 
   const batchResult = await docClient.send(
     new BatchGetCommand({ RequestItems: { [table]: { Keys: batchKeys } } }),
