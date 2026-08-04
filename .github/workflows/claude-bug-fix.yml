@@ -86,12 +86,16 @@ jobs:
             Follow this sequence strictly:
 
             1. REPRODUCE. Write a failing test that captures the reported
-               behavior (unit test in tests/lib or integration test in
-               tests/integration, matching existing test conventions). Run it
-               and confirm it fails for the reported reason. If you cannot
-               reproduce the bug, STOP: comment on the issue explaining what
-               you tried and why it did not reproduce, add the `needs-human`
-               label, and do not change any source code.
+               behavior, matching existing test conventions: a handler bug
+               (a Lambda under src/functions) belongs in tests/functions, a
+               shared-lib bug in tests/lib; use tests/integration only when the
+               bug needs live AWS. The pr-check merge gate runs `npm test`,
+               which covers tests/lib and tests/functions — put the regression
+               where `npm test` will run it. Run the test and confirm it fails
+               for the reported reason. If you cannot reproduce the bug, STOP:
+               comment on the issue explaining what you tried and why it did
+               not reproduce, add the `needs-human` label, and do not change
+               any source code.
             2. FIX. Find the root cause and make the smallest fix that makes
                the failing test pass. Respect CLAUDE.md rules (ownership
                checks, response helpers, DynamoDB key patterns).
