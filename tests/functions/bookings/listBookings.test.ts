@@ -89,4 +89,42 @@ describe('listBookings handler', () => {
     const body = JSON.parse(res.body);
     expect(body.bookings).toEqual([]);
   });
+
+  it('returns 200 with both bookings populated when two bookings share the same dog', async () => {
+    const booking1 = { ...bookingRow, bookingId: 'booking-1', vetId: 'vet-1', dogId: 'dog-123' };
+    const booking2 = { ...bookingRow, bookingId: 'booking-2', vetId: 'vet-2', dogId: 'dog-123' };
+
+    mockDocClientSend.mockImplementationOnce(() => Promise.resolve({ Items: [booking1, booking2] }));
+    mockDocClientSend.mockImplementationOnce((command) => {
+      const keys = (command as { input: { RequestItems: Record<string, { Keys: { PK: string; SK: string }[] }> } })
+        .input.RequestItems['furcircle-test']!.Keys;
+      const seen = new Set<string>();
+      for (const k of keys) {
+        const id = `${k.PK}#${k.SK}`;
+        if (seen.has(id)) {
+          // Real DynamoDB rejects BatchGetItem calls whose Keys array contains duplicates.
+          return Promise.reject(new Error('ValidationException: Provided list of item keys contains duplicates'));
+        }
+        seen.add(id);
+      }
+      return Promise.resolve({
+        Responses: {
+          'furcircle-test': [
+            { PK: 'VET#vet-1', SK: 'PROFILE', vetId: 'vet-1', firstName: 'Emma', lastName: 'Clarke', providerType: 'behaviourist', photoUrl: null },
+            { PK: 'VET#vet-2', SK: 'PROFILE', vetId: 'vet-2', firstName: 'Raj', lastName: 'Singh', providerType: 'vet', photoUrl: null },
+            dogProfile,
+          ],
+        },
+      });
+    });
+
+    const res = (await handler(makeEvent())) as Result;
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.bookings).toHaveLength(2);
+    expect(body.bookings[0].dog.name).toBe('Buddy');
+    expect(body.bookings[1].dog.name).toBe('Buddy');
+    expect(body.bookings[0].vet.firstName).toBe('Emma');
+    expect(body.bookings[1].vet.firstName).toBe('Raj');
+  });
 });
